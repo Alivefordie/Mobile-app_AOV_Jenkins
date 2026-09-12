@@ -53,7 +53,11 @@ class _LoginPageState extends State<LoginPage> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is AuthAuthenticated) {
-          Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (route) => false,);
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppRoutes.home,
+            (route) => false,
+          );
         }
         if (state is AuthFailure) {
           ScaffoldMessenger.of(
@@ -62,13 +66,13 @@ class _LoginPageState extends State<LoginPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF20D13),
+        backgroundColor: const Color(0xFFD96868),
         body: SafeArea(
           bottom: false,
           child: SingleChildScrollView(
             child: Column(
               children: [
-                const LoginLogo(),
+                const LoginLogo(heightFactor: 0.32, widthFactor: 0.38),
                 LoginForm(
                   formKey: _formKey,
                   emailController: _emailController,
