@@ -16,7 +16,9 @@ class FoodLoading extends FoodState {
 
 class FoodLoaded extends FoodState {
   final List<Food> foods;
-  FoodLoaded(this.foods);
+  // คำค้นหาที่ทำให้ได้ผลลัพธ์ชุดนี้ ถ้าเป็น null คือไม่ได้มาจากการค้นหา
+  final String? query;
+  FoodLoaded(this.foods, {this.query});
 }
 
 class FoodError extends FoodState {

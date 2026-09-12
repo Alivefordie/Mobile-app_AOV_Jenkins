@@ -10,9 +10,10 @@ import {
   Query,
 } from '@nestjs/common';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
+import { SearchRecipesDto } from './dto/search-recipes.dto';
 import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { Recipe, RecipeStatus, RecipeType } from './entities/recipe.entity';
-import { RecipesService } from './recipes.service';
+import { PaginatedResult, RecipesService } from './recipes.service';
 
 @Controller('recipes')
 export class RecipesController {
@@ -20,12 +21,27 @@ export class RecipesController {
 
   @Get()
   findAll(
+    @Query('search') search?: string,
     @Query('category') category?: string,
+    @Query('categoryId') categoryId?: string,
     @Query('creatorId') creatorId?: string,
     @Query('status') status?: RecipeStatus,
     @Query('type') type?: RecipeType,
   ): Promise<Recipe[]> {
-    return this.recipesService.findAll({ category, creatorId, status, type });
+    return this.recipesService.findAll({
+      search,
+      category,
+      categoryId,
+      creatorId,
+      status,
+      type,
+    });
+  }
+
+  // ต้องมาก่อน @Get(':id') ไม่งั้น 'search' จะถูกจับเป็น id
+  @Get('search')
+  search(@Query() dto: SearchRecipesDto): Promise<PaginatedResult<Recipe>> {
+    return this.recipesService.search(dto);
   }
 
   @Get(':id')

@@ -40,7 +40,19 @@ class _HomePageState extends State<HomePage> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              const SearchBarWidget(),
+              SearchBarWidget(
+                onSearch: (query) {
+                  final foodBloc = context.read<FoodBloc>();
+                  final selectedId = context.read<CategoryBloc>().state.selectedId;
+                  if (query.isEmpty) {
+                    // ล้างคำค้นหา = กลับไปแสดงตามหมวดที่เลือกไว้
+                    foodBloc.add(FetchFoodByCategoryEvent(selectedId));
+                  } else {
+                    // ค้นหาในขอบเขตของหมวดที่เลือกอยู่
+                    foodBloc.add(SearchFoodEvent(query, categoryId: selectedId));
+                  }
+                },
+              ),
 
               const SizedBox(height: 20),
 
@@ -66,12 +78,15 @@ class _HomePageState extends State<HomePage> {
                   }
                   if (state is FoodLoaded) {
                     if (state.foods.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 40),
+                      final query = state.query;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 40),
                         child: Center(
                           child: Text(
-                            'ยังไม่มีเมนูในหมวดนี้',
-                            style: TextStyle(color: Colors.grey),
+                            query == null
+                                ? 'ยังไม่มีเมนูในหมวดนี้'
+                                : 'ไม่พบเมนูที่ชื่อ "$query"',
+                            style: const TextStyle(color: Colors.grey),
                           ),
                         ),
                       );

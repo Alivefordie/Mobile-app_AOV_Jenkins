@@ -1,16 +1,33 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Repository, SelectQueryBuilder } from 'typeorm';
 import { Category } from '../categories/entities/category.entity';
 import { CreateRecipeDto } from './dto/create-recipe.dto';
+import { SearchRecipesDto } from './dto/search-recipes.dto';
 import { UpdateRecipeDto } from './dto/update-recipe.dto';
 import { Recipe, RecipeStatus, RecipeType } from './entities/recipe.entity';
 
 export interface FindRecipesOptions {
+  search?: string;
   category?: string;
+  categoryId?: string;
   creatorId?: string;
   status?: RecipeStatus;
   type?: RecipeType;
+}
+
+//system search
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+// กัน % _ \ ในคำค้นหาไม่ให้กลายเป็น wildcard ของ LIKE
+function escapeLikeTerm(term: string): string {
+  return term.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
 @Injectable()
@@ -30,6 +47,77 @@ export class RecipesService {
       .leftJoinAndSelect('recipe.categories', 'category')
       .orderBy('recipe.createdAt', 'DESC');
 
+//system search 
+    this.applyFilters(query, options);
+
+    return query.getMany();
+  }
+
+  // ค้นหาตามชื่ออาหาร พร้อมแบ่งหน้าและเรียงตามความใกล้เคียง
+  async search(dto: SearchRecipesDto): Promise<PaginatedResult<Recipe>> {
+    const { q, page, limit, ...filters } = dto;
+
+    // แยกเป็น 2 ขั้น: หา id ที่ตรงก่อน แล้วค่อยโหลด relation
+    // เพราะถ้า limit ตรงๆ บน query ที่ join categories แถวจะถูกนับซ้ำ
+    const idQuery = this.recipeRepository.createQueryBuilder('recipe');
+    this.applyFilters(idQuery, { ...filters, search: q });
+
+    const total = await idQuery.getCount();
+    if (total === 0) {
+      return { data: [], total, page, limit, totalPages: 0 };
+    }
+
+    const term = escapeLikeTerm(q);
+    const rows = await idQuery
+      .select('recipe.id', 'id')
+      // ชื่อตรงเป๊ะมาก่อน ตามด้วยชื่อที่ขึ้นต้นด้วยคำค้นหา แล้วค่อยที่เหลือ
+      .addSelect(
+        `CASE
+           WHEN recipe.title ILIKE :exactTerm ESCAPE '\\' THEN 0
+           WHEN recipe.title ILIKE :prefixTerm ESCAPE '\\' THEN 1
+           ELSE 2
+         END`,
+        'relevance',
+      )
+      .setParameters({ exactTerm: term, prefixTerm: `${term}%` })
+      .orderBy('relevance', 'ASC')
+      .addOrderBy('recipe.title', 'ASC')
+      .addOrderBy('recipe.createdAt', 'DESC')
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getRawMany<{ id: string }>();
+
+    const ids = rows.map((row) => row.id);
+    const recipes = await this.recipeRepository.find({
+      where: { id: In(ids) },
+      relations: { creator: true, categories: true },
+    });
+
+    // find() ไม่การันตีลำดับ จึงเรียงกลับตามลำดับความใกล้เคียงที่หามาได้
+    const byId = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+    const data = ids
+      .map((id) => byId.get(id))
+      .filter((recipe): recipe is Recipe => recipe !== undefined);
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  private applyFilters(
+    query: SelectQueryBuilder<Recipe>,
+    options: FindRecipesOptions,
+  ): void {
+    if (options.search) {
+      query.andWhere("recipe.title ILIKE :search ESCAPE '\\'", {
+        search: `%${escapeLikeTerm(options.search)}%`,
+      });
+    }
+
     if (options.category) {
       // กรองด้วย subquery เพื่อให้ recipe ที่ผ่านการกรองยังโหลด categories มาครบทุกอัน
       // (ถ้าใส่เงื่อนไขลงใน join ตรงๆ จะเหลือแต่ category ที่ตรงกับที่กรอง)
@@ -43,6 +131,22 @@ export class RecipesService {
             .where('filteredCategory.slug = :category')
             .getQuery(),
         { category: options.category },
+      );
+    }
+    
+// system search
+    if (options.categoryId) {
+      // ใช้ alias คนละชุดกับ options.category กันชนกันเวลากรองพร้อมกัน
+      query.andWhere(
+        'recipe.id IN ' +
+          query
+            .subQuery()
+            .select('filteredById.id')
+            .from(Recipe, 'filteredById')
+            .innerJoin('filteredById.categories', 'filteredCategoryById')
+            .where('filteredCategoryById.id = :categoryId')
+            .getQuery(),
+        { categoryId: options.categoryId },
       );
     }
 
@@ -59,8 +163,6 @@ export class RecipesService {
     if (options.type) {
       query.andWhere('recipe.type = :type', { type: options.type });
     }
-
-    return query.getMany();
   }
 
   async findOne(id: string): Promise<Recipe> {

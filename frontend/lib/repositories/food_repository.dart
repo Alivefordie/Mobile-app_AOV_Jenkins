@@ -51,6 +51,24 @@ class FoodRepository {
   }
 
   // ================================
+  
+  Future<List<Food>> searchFoods(
+    String query, {
+    String? type,
+    String? categoryId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/recipes/search').replace(
+      queryParameters: {
+        'q': query,
+        'type': ?type,
+        'categoryId': ?categoryId,
+        'limit': '50', // backend จำกัดไว้สูงสุด 50
+      },
+    );
+    return _searchFoods(uri);
+  }
+
+  // ================================
 
   Future<Food> fetchFoodById(String id) async {
     final url = '$baseUrl/recipes/$id';
@@ -114,6 +132,27 @@ class FoodRepository {
     } else {
       debugPrint('Failed to load food: ${response.statusCode}');
       throw Exception('Failed to load food');
+    }
+  }
+
+  Future<List<Food>> _searchFoods(Uri uri) async {
+    debugPrint('Searching foods from: $uri');
+    final response = await http.get(uri);
+
+    if (response.statusCode == 200) {
+      // /recipes/search ห่อผลลัพธ์ไว้ใน data ไม่ได้คืน array ตรง ๆ เหมือน /recipes
+      final body = json.decode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as List<dynamic>? ?? const [];
+      return data
+          .map((json) => Food.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } else if (response.statusCode == 400) {
+      // คำค้นหาไม่ผ่าน validation ฝั่ง backend ถือว่าไม่เจอเมนู
+      debugPrint('Invalid search query: ${response.body}');
+      return const [];
+    } else {
+      debugPrint('Failed to search foods: ${response.statusCode}');
+      throw Exception('Failed to search foods');
     }
   }
 
