@@ -6,6 +6,12 @@ import 'package:http/http.dart' as http;
 
 abstract interface class AuthRepository {
   Future<AuthResponse> login({required String email, required String password});
+
+  Future<AuthResponse> register({
+    required String email,
+    required String password,
+    required String displayName,
+  });
 }
 
 class HttpAuthRepository implements AuthRepository {
@@ -50,6 +56,60 @@ class HttpAuthRepository implements AuthRepository {
     } on TimeoutException {
       throw const AuthRepositoryException(
         'Login request timed out. Check the backend connection.',
+      );
+    } on FormatException {
+      throw const AuthRepositoryException('Backend returned malformed JSON.');
+    } on http.ClientException catch (error) {
+      throw AuthRepositoryException(
+        'Could not connect to the backend: ${error.message}',
+      );
+    }
+  }
+
+  @override
+  Future<AuthResponse> register({
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
+    return _sendAuthRequest(
+      path: '/auth/register',
+      body: {
+        'email': email.trim(),
+        'password': password,
+        'displayName': displayName.trim(),
+      },
+    );
+  }
+
+  Future<AuthResponse> _sendAuthRequest({
+    required String path,
+    required Map<String, String> body,
+  }) async {
+    try {
+      final response = await _client
+          .post(
+            Uri.parse('$_baseUrl$path'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode(body),
+          )
+          .timeout(requestTimeout);
+
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw AuthRepositoryException(_errorMessage(decoded));
+      }
+      if (decoded is! Map<String, dynamic>) {
+        throw const AuthRepositoryException(
+          'Backend returned an invalid authentication response.',
+        );
+      }
+      return AuthResponse.fromJson(decoded);
+    } on AuthRepositoryException {
+      rethrow;
+    } on TimeoutException {
+      throw const AuthRepositoryException(
+        'Request timed out. Check the backend connection.',
       );
     } on FormatException {
       throw const AuthRepositoryException('Backend returned malformed JSON.');

@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 class LoginFooter extends StatelessWidget {
-  const LoginFooter({super.key});
+  const LoginFooter({this.onSignUp, super.key});
+
+  final VoidCallback? onSignUp;
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: TextButton(
-        onPressed: () {},
+        onPressed: onSignUp,
         child: const Text.rich(
           TextSpan(
             text: "Don't have an account? ",

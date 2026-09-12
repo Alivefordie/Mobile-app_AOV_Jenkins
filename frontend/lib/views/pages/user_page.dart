@@ -5,6 +5,7 @@ import 'package:flutter_application_1/bloc/profile/profile_state.dart';
 import 'package:flutter_application_1/models/user_profile.dart';
 import 'package:flutter_application_1/models/recipe_collection_type.dart';
 import 'package:flutter_application_1/routes/app_routes.dart';
+import 'package:flutter_application_1/repositories/token_storage.dart';
 import 'package:flutter_application_1/widgets/profile/profile_widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -49,9 +50,15 @@ class UserPage extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogContext);
-              _showComingSoon(context, 'Sign out');
+              await TokenStorage().clearAccessToken();
+              if (!context.mounted) return;
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.home,
+                (route) => false,
+              );
             },
             style: FilledButton.styleFrom(backgroundColor: ProfileColors.ink),
             child: const Text('Sign out'),

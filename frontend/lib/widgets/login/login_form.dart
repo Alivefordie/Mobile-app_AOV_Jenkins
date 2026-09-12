@@ -15,6 +15,7 @@ class LoginForm extends StatelessWidget {
     required this.acceptedTerms,
     required this.onTermsChanged,
     required this.onSubmit,
+    this.onSignUp,
     super.key,
   });
 
@@ -26,6 +27,7 @@ class LoginForm extends StatelessWidget {
   final bool acceptedTerms;
   final ValueChanged<bool> onTermsChanged;
   final VoidCallback onSubmit;
+  final VoidCallback? onSignUp;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +57,7 @@ class LoginForm extends StatelessWidget {
             const SizedBox(height: 22),
             const LoginSocialButtons(),
             const SizedBox(height: 26),
-            const LoginFooter(),
+            LoginFooter(onSignUp: onSignUp),
           ],
         ),
       ),

@@ -4,9 +4,14 @@ import 'package:flutter_application_1/bloc/auth/auth_state.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class LoginSubmitButton extends StatelessWidget {
-  const LoginSubmitButton({required this.onPressed, super.key});
+  const LoginSubmitButton({
+    required this.onPressed,
+    this.label = 'Sign In',
+    super.key,
+  });
 
   final VoidCallback onPressed;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -34,9 +39,9 @@ class LoginSubmitButton extends StatelessWidget {
                       color: Colors.white,
                     ),
                   )
-                : const Text(
-                    'Sign In',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                : Text(
+                    label,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
           ),
         );

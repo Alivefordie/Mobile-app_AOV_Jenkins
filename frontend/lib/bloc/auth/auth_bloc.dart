@@ -9,6 +9,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     : _tokenStorage = tokenStorage ?? TokenStorage(),
       super(const AuthInitial()) {
     on<AuthLoginRequested>(_login);
+    on<AuthRegisterRequested>(_register);
   }
 
   final AuthRepository _repository;
@@ -20,6 +21,24 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final response = await _repository.login(
         email: event.email,
         password: event.password,
+      );
+      await _tokenStorage.saveAccessToken(response.accessToken);
+      emit(AuthAuthenticated(response));
+    } on Exception catch (error) {
+      emit(AuthFailure(error.toString()));
+    }
+  }
+
+  Future<void> _register(
+    AuthRegisterRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+    try {
+      final response = await _repository.register(
+        email: event.email,
+        password: event.password,
+        displayName: event.displayName,
       );
       await _tokenStorage.saveAccessToken(response.accessToken);
       emit(AuthAuthenticated(response));
