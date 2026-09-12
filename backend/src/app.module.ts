@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import databaseConfig from '../config/database.config';
+import jwtConfig from '../config/jwt.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
 import { CategoriesModule } from './categories/categories.module';
 import { DatabaseModule } from './database/database.module';
 import { FavoritesModule } from './favorites/favorites.module';
@@ -20,10 +22,11 @@ import { UsersModule } from './users/users.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env.production', '.env'],
-      load: [databaseConfig],
+      load: [databaseConfig, jwtConfig],
     }),
     DatabaseModule,
     UsersModule,
+    AuthModule,
     CategoriesModule,
     RecipesModule,
     IngredientsModule,

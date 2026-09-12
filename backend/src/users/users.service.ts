@@ -36,9 +36,38 @@ export class UsersService {
     return user;
   }
 
+  findById(id: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { id } });
+  }
+
+  findByEmail(email: string): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { email: email.toLowerCase() },
+    });
+  }
+
+  /** ใช้ตอน login เท่านั้น เพราะ passwordHash เป็นคอลัมน์ select: false */
+  findByEmailWithPassword(email: string): Promise<User | null> {
+    return this.userRepository.findOne({
+      where: { email: email.toLowerCase() },
+      select: {
+        id: true,
+        email: true,
+        passwordHash: true,
+        displayName: true,
+        avatarUrl: true,
+        role: true,
+        status: true,
+      },
+    });
+  }
+
   async create(input: CreateUserInput): Promise<User> {
     const user = await this.userRepository.save(
-      this.userRepository.create(input),
+      this.userRepository.create({
+        ...input,
+        email: input.email.toLowerCase(),
+      }),
     );
     return this.findOne(user.id);
   }

@@ -15,3 +15,9 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+
+
+LocalAuthGuard ใช้งานแค่ login เป็นหลัก 
+JwtAuthGuard ใช้ตอนเข้า API ที่ต้อง Login เป็นหลัก 
+RolesGuard ใช้ตรวจ "สิทธิ์" 
