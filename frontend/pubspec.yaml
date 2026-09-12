@@ -36,6 +36,8 @@ dependencies:
   http: ^1.6.0
   cupertino_icons: ^1.0.8
   flutter_bloc: ^9.1.1
+  flutter_secure_storage: ^9.2.4
+  flutter_svg: ^2.2.1
   video_player: ^2.13.0
 
 dev_dependencies:

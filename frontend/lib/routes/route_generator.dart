@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/bloc/category/category_bloc.dart';
 import 'package:flutter_application_1/bloc/category/category_event.dart';
+import 'package:flutter_application_1/bloc/auth/auth_bloc.dart';
 import 'package:flutter_application_1/bloc/food/food_bloc.dart';
 import 'package:flutter_application_1/bloc/page/page_bloc.dart';
 import 'package:flutter_application_1/bloc/profile/profile_bloc.dart';
 import 'package:flutter_application_1/repositories/category_repository.dart';
+import 'package:flutter_application_1/repositories/auth_repository.dart';
 import 'package:flutter_application_1/bloc/profile/profile_event.dart';
 import 'package:flutter_application_1/bloc/recipe_library/recipe_library_bloc.dart';
 import 'package:flutter_application_1/bloc/recipe_library/recipe_library_event.dart';
@@ -23,11 +25,20 @@ import 'package:flutter_application_1/views/pages/draft_recipes_page.dart';
 import 'package:flutter_application_1/views/pages/favorite_recipes_page.dart';
 import 'package:flutter_application_1/views/pages/my_recipes_page.dart';
 import 'package:flutter_application_1/views/pages/purchased_recipes_page.dart';
+import 'package:flutter_application_1/views/pages/login_page.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class RoutesGenerator {
   static Route<dynamic> generateRoute(RouteSettings setting) {
     switch (setting.name) {
+      case AppRoutes.login:
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) =>
+                AuthBloc(HttpAuthRepository(baseUrl: ApiConfig.apiBaseUrl)),
+            child: const LoginPage(),
+          ),
+        );
       case AppRoutes.home:
         return MaterialPageRoute(
           builder: (_) => MultiBlocProvider(
@@ -57,11 +68,8 @@ class RoutesGenerator {
       case AppRoutes.community:
         return MaterialPageRoute(
           builder: (_) => BlocProvider(
-            create: (_) => CategoryBloc(
-              CategoryRepository(),
-            )..add(
-                FetchCategoriesEvent(),
-              ),
+            create: (_) =>
+                CategoryBloc(CategoryRepository())..add(FetchCategoriesEvent()),
             child: const CommunityPage(),
           ),
         );
@@ -77,14 +85,8 @@ class RoutesGenerator {
         return MaterialPageRoute(
           builder: (_) => MultiBlocProvider(
             providers: [
-              BlocProvider.value(
-                value: categoryBloc,
-              ),
-              BlocProvider(
-                create: (_) => FoodBloc(
-                  FoodRepository(),
-                ),
-              ),
+              BlocProvider.value(value: categoryBloc),
+              BlocProvider(create: (_) => FoodBloc(FoodRepository())),
             ],
             child: CommunitySelectCategoryPage(
               categoryUUID: categoryUUID,
@@ -97,9 +99,7 @@ class RoutesGenerator {
         final String foodId = setting.arguments as String;
 
         return MaterialPageRoute(
-          builder: (_) => FoodDetailPage(
-            foodsId: foodId,
-          ),
+          builder: (_) => FoodDetailPage(foodsId: foodId),
         );
 
       case AppRoutes.myRecipes:
