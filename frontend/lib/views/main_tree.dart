@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/views/pages/login_page.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_application_1/bloc/page/page_bloc.dart';
 import 'package:flutter_application_1/bloc/page/page_state.dart';
@@ -21,6 +22,7 @@ class _MainTreeWidgetState extends State<MainTreeWidget> {
     HomePage(),
     CommunityPage(),
     UserPage(),
+    LoginPage(),
     //Scaffold(body: Center(child: Text('No route defined'))),
   ];
 
