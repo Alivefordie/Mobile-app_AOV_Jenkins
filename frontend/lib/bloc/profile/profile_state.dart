@@ -8,6 +8,10 @@ final class ProfileInitial extends ProfileState {
   const ProfileInitial();
 }
 
+final class ProfileGuest extends ProfileState {
+  const ProfileGuest();
+}
+
 final class ProfileLoading extends ProfileState {
   const ProfileLoading();
 }

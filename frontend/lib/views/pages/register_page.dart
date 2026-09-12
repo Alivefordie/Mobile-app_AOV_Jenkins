@@ -3,28 +3,33 @@ import 'package:flutter_application_1/bloc/auth/auth_bloc.dart';
 import 'package:flutter_application_1/bloc/auth/auth_event.dart';
 import 'package:flutter_application_1/bloc/auth/auth_state.dart';
 import 'package:flutter_application_1/routes/app_routes.dart';
-import 'package:flutter_application_1/widgets/login/login_form.dart';
 import 'package:flutter_application_1/widgets/login/login_logo.dart';
+import 'package:flutter_application_1/widgets/register/register_form.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
+  final _displayNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   bool _acceptedTerms = false;
 
   @override
   void dispose() {
+    _displayNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -40,10 +45,12 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
+    final email = _emailController.text.trim();
     context.read<AuthBloc>().add(
-      AuthLoginRequested(
-        email: _emailController.text,
+      AuthRegisterRequested(
+        email: email,
         password: _passwordController.text,
+        displayName: _displayNameController.text.trim(),
       ),
     );
   }
@@ -53,7 +60,11 @@ class _LoginPageState extends State<LoginPage> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is AuthAuthenticated) {
-          Navigator.pushNamedAndRemoveUntil(context, AppRoutes.home, (route) => false,);
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppRoutes.home,
+            (route) => false,
+          );
         }
         if (state is AuthFailure) {
           ScaffoldMessenger.of(
@@ -69,21 +80,27 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               children: [
                 const LoginLogo(),
-                LoginForm(
+                RegisterForm(
                   formKey: _formKey,
+                  displayNameController: _displayNameController,
                   emailController: _emailController,
                   passwordController: _passwordController,
+                  confirmPasswordController: _confirmPasswordController,
                   obscurePassword: _obscurePassword,
+                  obscureConfirmPassword: _obscureConfirmPassword,
                   onTogglePassword: () => setState(() {
                     _obscurePassword = !_obscurePassword;
+                  }),
+                  onToggleConfirmPassword: () => setState(() {
+                    _obscureConfirmPassword = !_obscureConfirmPassword;
                   }),
                   acceptedTerms: _acceptedTerms,
                   onTermsChanged: (value) => setState(() {
                     _acceptedTerms = value;
                   }),
                   onSubmit: _submit,
-                  onSignUp: () {
-                    Navigator.pushReplacementNamed(context, AppRoutes.register);
+                  onSignIn: () {
+                    Navigator.pushReplacementNamed(context, AppRoutes.login);
                   },
                 ),
               ],

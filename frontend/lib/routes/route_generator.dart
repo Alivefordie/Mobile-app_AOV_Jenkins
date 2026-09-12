@@ -26,6 +26,7 @@ import 'package:flutter_application_1/views/pages/favorite_recipes_page.dart';
 import 'package:flutter_application_1/views/pages/my_recipes_page.dart';
 import 'package:flutter_application_1/views/pages/purchased_recipes_page.dart';
 import 'package:flutter_application_1/views/pages/login_page.dart';
+import 'package:flutter_application_1/views/pages/register_page.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class RoutesGenerator {
@@ -37,6 +38,14 @@ class RoutesGenerator {
             create: (_) =>
                 AuthBloc(HttpAuthRepository(baseUrl: ApiConfig.apiBaseUrl)),
             child: const LoginPage(),
+          ),
+        );
+      case AppRoutes.register:
+        return MaterialPageRoute(
+          builder: (_) => BlocProvider(
+            create: (_) =>
+                AuthBloc(HttpAuthRepository(baseUrl: ApiConfig.apiBaseUrl)),
+            child: const RegisterPage(),
           ),
         );
       case AppRoutes.home:
@@ -54,7 +63,6 @@ class RoutesGenerator {
               BlocProvider(
                 create: (context) => ProfileBloc(
                   HttpProfileRepository(baseUrl: ApiConfig.apiBaseUrl),
-                  userId: ApiConfig.profileUserId,
                 )..add(const ProfileRequested()),
               ),
             ],

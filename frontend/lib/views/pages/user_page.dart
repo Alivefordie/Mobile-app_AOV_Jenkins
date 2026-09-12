@@ -5,6 +5,7 @@ import 'package:flutter_application_1/bloc/profile/profile_state.dart';
 import 'package:flutter_application_1/models/user_profile.dart';
 import 'package:flutter_application_1/models/recipe_collection_type.dart';
 import 'package:flutter_application_1/routes/app_routes.dart';
+import 'package:flutter_application_1/repositories/token_storage.dart';
 import 'package:flutter_application_1/widgets/profile/profile_widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -49,9 +50,15 @@ class UserPage extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(dialogContext);
-              _showComingSoon(context, 'Sign out');
+              await TokenStorage().clearAccessToken();
+              if (!context.mounted) return;
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.home,
+                (route) => false,
+              );
             },
             style: FilledButton.styleFrom(backgroundColor: ProfileColors.ink),
             child: const Text('Sign out'),
@@ -95,6 +102,18 @@ class UserPage extends StatelessWidget {
                 onSignOut: () => _confirmSignOut(context),
                 onCartPressed: () => _openCart(context),
               ),
+              ProfileGuest() => _ProfileContent(
+                profile: UserProfile.guest(),
+                onRefresh: () async {},
+                onActionPressed: (_) =>
+                    Navigator.pushNamed(context, AppRoutes.login),
+                onRecipeCollectionPressed: (_) =>
+                    Navigator.pushNamed(context, AppRoutes.login),
+                onSignOut: () => Navigator.pushNamed(context, AppRoutes.login),
+                onCartPressed: () =>
+                    Navigator.pushNamed(context, AppRoutes.login),
+                isGuest: true,
+              ),
               ProfileFailure(:final message) => ProfileErrorView(
                 message: message,
                 onRetry: () =>
@@ -117,6 +136,7 @@ class _ProfileContent extends StatelessWidget {
     required this.onRecipeCollectionPressed,
     required this.onSignOut,
     required this.onCartPressed,
+    this.isGuest = false,
   });
 
   final UserProfile profile;
@@ -125,6 +145,7 @@ class _ProfileContent extends StatelessWidget {
   final ValueChanged<RecipeCollectionType> onRecipeCollectionPressed;
   final VoidCallback onSignOut;
   final VoidCallback onCartPressed;
+  final bool isGuest;
 
   @override
   Widget build(BuildContext context) {
@@ -148,6 +169,10 @@ class _ProfileContent extends StatelessWidget {
                 ProfileCard(
                   profile: profile,
                   onEditPressed: () => onActionPressed('Edit profile'),
+                  actionLabel: isGuest ? 'Sign in' : 'Edit profile',
+                  actionIcon: isGuest
+                      ? Icons.login_rounded
+                      : Icons.edit_outlined,
                 ),
                 const SizedBox(height: 16),
                 ProfileStatsRow(profile: profile),
@@ -170,6 +195,10 @@ class _ProfileContent extends StatelessWidget {
                 ProfileAccountMenu(
                   onPressed: onActionPressed,
                   onSignOut: onSignOut,
+                  signOutLabel: isGuest ? 'Sign in' : 'Sign out',
+                  signOutIcon: isGuest
+                      ? Icons.login_rounded
+                      : Icons.logout_rounded,
                 ),
                 const SizedBox(height: 24),
                 const Center(

@@ -1,3 +1,5 @@
+import 'package:flutter_application_1/models/auth_response.dart';
+
 class UserProfile {
   const UserProfile({
     required this.id,
@@ -27,11 +29,46 @@ class UserProfile {
   final int draftCount;
   final double rating;
 
+  factory UserProfile.guest() {
+    return const UserProfile(
+      id: '',
+      displayName: 'Guest',
+      email: '-',
+      avatarUrl: null,
+      role: 'guest',
+      status: 'guest',
+      recipeCount: 0,
+      purchasedCount: 0,
+      savedCount: 0,
+      draftCount: 0,
+      rating: 0,
+    );
+  }
+
   String get roleLabel => switch (role) {
     'creator' => 'Recipe creator',
     'admin' => 'Administrator',
     _ => 'Food lover',
   };
+
+  factory UserProfile.fromAuthUser(
+    AuthUser user, {
+    required String apiBaseUrl,
+  }) {
+    return UserProfile(
+      id: user.id,
+      displayName: user.displayName,
+      email: user.email,
+      avatarUrl: _resolveAvatarUrl(user.avatarUrl, apiBaseUrl),
+      role: user.role,
+      status: 'active',
+      recipeCount: 0,
+      purchasedCount: 0,
+      savedCount: 0,
+      draftCount: 0,
+      rating: 0,
+    );
+  }
 
   factory UserProfile.fromJson(
     Map<String, dynamic> json, {
