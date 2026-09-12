@@ -73,7 +73,7 @@ class _RegisterPageState extends State<RegisterPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF20D13),
+        backgroundColor: const Color(0xFFD96868),
         body: SafeArea(
           bottom: false,
           child: SingleChildScrollView(
