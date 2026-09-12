@@ -7,10 +7,14 @@ class ProfileCard extends StatelessWidget {
     super.key,
     required this.profile,
     required this.onEditPressed,
+    this.actionLabel = 'Edit profile',
+    this.actionIcon = Icons.edit_outlined,
   });
 
   final UserProfile profile;
   final VoidCallback onEditPressed;
+  final String actionLabel;
+  final IconData actionIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -84,9 +88,9 @@ class ProfileCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
-              icon: const Icon(Icons.edit_outlined, size: 19),
-              label: const Text(
-                'Edit profile',
+              icon: Icon(actionIcon, size: 19),
+              label: Text(
+                actionLabel,
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
             ),

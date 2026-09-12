@@ -63,7 +63,6 @@ class RoutesGenerator {
               BlocProvider(
                 create: (context) => ProfileBloc(
                   HttpProfileRepository(baseUrl: ApiConfig.apiBaseUrl),
-                  userId: ApiConfig.profileUserId,
                 )..add(const ProfileRequested()),
               ),
             ],

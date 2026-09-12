@@ -6,10 +6,14 @@ class ProfileAccountMenu extends StatelessWidget {
     super.key,
     required this.onPressed,
     required this.onSignOut,
+    this.signOutLabel = 'Sign out',
+    this.signOutIcon = Icons.logout_rounded,
   });
 
   final ValueChanged<String> onPressed;
   final VoidCallback onSignOut;
+  final String signOutLabel;
+  final IconData signOutIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -44,8 +48,8 @@ class ProfileAccountMenu extends StatelessWidget {
           ),
           const _MenuDivider(),
           _MenuTile(
-            icon: Icons.logout_rounded,
-            label: 'Sign out',
+            icon: signOutIcon,
+            label: signOutLabel,
             foregroundColor: const Color(0xFFD54444),
             onTap: onSignOut,
           ),

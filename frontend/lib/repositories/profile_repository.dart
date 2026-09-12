@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_application_1/models/auth_response.dart';
 import 'package:flutter_application_1/models/user_profile.dart';
 import 'package:http/http.dart' as http;
 
 abstract interface class ProfileRepository {
-  Future<UserProfile> fetchProfile(String userId);
+  Future<UserProfile> fetchProfile(String accessToken);
 }
 
 class HttpProfileRepository implements ProfileRepository {
@@ -21,30 +22,23 @@ class HttpProfileRepository implements ProfileRepository {
   final Duration requestTimeout;
 
   @override
-  Future<UserProfile> fetchProfile(String userId) async {
-    final normalizedUserId = userId.trim();
-    //
-    if (normalizedUserId.isEmpty) {
-      throw const ProfileRepositoryException(
-        'PROFILE_USER_ID is missing. Start Flutter with '
-        '--dart-define=PROFILE_USER_ID=<user-uuid>.'
-        'dev only',
-      );
+  Future<UserProfile> fetchProfile(String accessToken) async {
+    final normalizedAccessToken = accessToken.trim();
+    if (normalizedAccessToken.isEmpty) {
+      throw const ProfileRepositoryException('Access token is missing.');
     }
-    //
-    final uri = Uri.parse(
-      '$_baseUrl/users/${Uri.encodeComponent(normalizedUserId)}/profile',
-    );
+    final uri = Uri.parse('$_baseUrl/auth/me');
 
     try {
-      final response = await _client.get(uri).timeout(requestTimeout);
+      final response = await _client
+          .get(uri, headers: {'Authorization': 'Bearer $normalizedAccessToken'})
+          .timeout(requestTimeout);
 
-      if (response.statusCode == 404) {
-        throw const ProfileRepositoryException('Profile not found.');
-      }
       if (response.statusCode != 200) {
         throw ProfileRepositoryException(
-          'Could not load profile (HTTP ${response.statusCode}).',
+          response.statusCode == 401
+              ? 'Your session has expired. Please sign in again.'
+              : 'Could not load profile (HTTP ${response.statusCode}).',
         );
       }
 
@@ -56,8 +50,10 @@ class HttpProfileRepository implements ProfileRepository {
       }
 
       try {
-        // print('Decoded profile JSON: $decoded');
-        return UserProfile.fromJson(decoded, apiBaseUrl: _baseUrl);
+        return UserProfile.fromAuthUser(
+          AuthUser.fromJson(decoded),
+          apiBaseUrl: _baseUrl,
+        );
       } on FormatException catch (error) {
         throw ProfileRepositoryException(error.message);
       }
