@@ -9,6 +9,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { User } from './entities/user.entity';
+import type { UserProfileResponse } from './dto/user-profile-response.dto';
 import type { CreateUserInput, UpdateUserInput } from './users.service';
 import { UsersService } from './users.service';
 
@@ -19,6 +20,13 @@ export class UsersController {
   @Get()
   findAll(): Promise<User[]> {
     return this.usersService.findAll();
+  }
+
+  @Get(':id/profile')
+  findProfile(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<UserProfileResponse> {
+    return this.usersService.findProfile(id);
   }
 
   @Get(':id')

@@ -1,7 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, MoreThan, Repository } from 'typeorm';
-import { RecipeAccess } from './entities/recipe-access.entity';
+import {
+  RecipeAccess,
+  RecipeAccessType,
+} from './entities/recipe-access.entity';
 
 @Injectable()
 export class RecipeAccessService {
@@ -12,6 +15,24 @@ export class RecipeAccessService {
 
   findAll(): Promise<RecipeAccess[]> {
     return this.accessRepository.find({ order: { grantedAt: 'DESC' } });
+  }
+
+  findPurchasedByUser(userId: string): Promise<RecipeAccess[]> {
+    return this.accessRepository
+      .createQueryBuilder('access')
+      .leftJoinAndSelect('access.recipe', 'recipe')
+      .leftJoinAndSelect('recipe.creator', 'creator')
+      .leftJoinAndSelect('recipe.categories', 'category')
+      .where('access.user_id = :userId', { userId })
+      .andWhere('access.access_type = :accessType', {
+        accessType: RecipeAccessType.PURCHASE,
+      })
+      .andWhere('access.revoked_at IS NULL')
+      .andWhere(
+        '(access.expires_at IS NULL OR access.expires_at > CURRENT_TIMESTAMP)',
+      )
+      .orderBy('access.granted_at', 'DESC')
+      .getMany();
   }
 
   async findOne(id: string): Promise<RecipeAccess> {

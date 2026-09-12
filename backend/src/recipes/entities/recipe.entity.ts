@@ -32,6 +32,11 @@ export enum RecipeDifficulty {
   HARD = 'hard',
 }
 
+export enum RecipeType {
+  COMMUNITY = 'community',
+  OFFICIAL = 'official',
+}
+
 @Entity('recipes')
 @Check('chk_recipes_price', '"price" >= 0')
 @Check(
@@ -85,6 +90,9 @@ export class Recipe extends BaseEntity {
 
   @Column({ type: 'enum', enum: RecipeDifficulty, nullable: true })
   difficulty!: RecipeDifficulty | null;
+
+  @Column({ type: 'enum', enum: RecipeType, default: RecipeType.COMMUNITY })
+  type!: RecipeType;
 
   @Index()
   @Column({ type: 'enum', enum: RecipeStatus, default: RecipeStatus.DRAFT })

@@ -7,8 +7,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
-import { Recipe } from './entities/recipe.entity';
+import { CreateRecipeDto } from './dto/create-recipe.dto';
+import { UpdateRecipeDto } from './dto/update-recipe.dto';
+import { Recipe, RecipeStatus, RecipeType } from './entities/recipe.entity';
 import { RecipesService } from './recipes.service';
 
 @Controller('recipes')
@@ -16,8 +19,13 @@ export class RecipesController {
   constructor(private readonly recipesService: RecipesService) {}
 
   @Get()
-  findAll(): Promise<Recipe[]> {
-    return this.recipesService.findAll();
+  findAll(
+    @Query('category') category?: string,
+    @Query('creatorId') creatorId?: string,
+    @Query('status') status?: RecipeStatus,
+    @Query('type') type?: RecipeType,
+  ): Promise<Recipe[]> {
+    return this.recipesService.findAll({ category, creatorId, status, type });
   }
 
   @Get(':id')
@@ -26,16 +34,16 @@ export class RecipesController {
   }
 
   @Post()
-  create(@Body() data: Partial<Recipe>): Promise<Recipe> {
-    return this.recipesService.create(data);
+  create(@Body() dto: CreateRecipeDto): Promise<Recipe> {
+    return this.recipesService.create(dto);
   }
 
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() data: Partial<Recipe>,
+    @Body() dto: UpdateRecipeDto,
   ): Promise<Recipe> {
-    return this.recipesService.update(id, data);
+    return this.recipesService.update(id, dto);
   }
 
   @Delete(':id')

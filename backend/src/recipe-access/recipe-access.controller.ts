@@ -28,6 +28,13 @@ export class RecipeAccessController {
     return this.recipeAccessService.hasActiveAccess(userId, recipeId);
   }
 
+  @Get('user/:userId')
+  findPurchasedByUser(
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ): Promise<RecipeAccess[]> {
+    return this.recipeAccessService.findPurchasedByUser(userId);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<RecipeAccess> {
     return this.recipeAccessService.findOne(id);

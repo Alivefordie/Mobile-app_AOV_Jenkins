@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -32,6 +34,7 @@ export interface StoredFile {
   stream: ReadStream;
   mimeType: string;
   size: number;
+  contentRange?: string;
 }
 
 const IMAGE_TYPES: Readonly<Record<string, string>> = {
@@ -74,7 +77,11 @@ export class UploadsService {
     return this.save(file, UploadKind.VIDEOS, VIDEO_TYPES, 100 * 1024 * 1024);
   }
 
-  async open(kind: UploadKind, filename: string): Promise<StoredFile> {
+  async open(
+    kind: UploadKind,
+    filename: string,
+    rangeHeader?: string,
+  ): Promise<StoredFile> {
     const safeFilename = basename(filename);
     if (safeFilename !== filename) {
       throw new BadRequestException('Invalid filename');
@@ -90,12 +97,20 @@ export class UploadsService {
       const fileStat = await stat(filePath);
       if (!fileStat.isFile()) throw new NotFoundException('File not found');
 
+      const range = this.parseRange(rangeHeader, fileStat.size);
+      const stream = range
+        ? createReadStream(filePath, { start: range.start, end: range.end })
+        : createReadStream(filePath);
+
       return {
-        stream: createReadStream(filePath),
+        stream,
         mimeType:
           MIME_BY_EXTENSION[extname(safeFilename).toLowerCase()] ??
           'application/octet-stream',
-        size: fileStat.size,
+        size: range ? range.end - range.start + 1 : fileStat.size,
+        contentRange: range
+          ? `bytes ${range.start}-${range.end}/${fileStat.size}`
+          : undefined,
       };
     } catch (error: unknown) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
@@ -103,6 +118,58 @@ export class UploadsService {
       }
       throw error;
     }
+  }
+
+  private parseRange(
+    rangeHeader: string | undefined,
+    fileSize: number,
+  ): { start: number; end: number } | undefined {
+    if (!rangeHeader) return undefined;
+
+    const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+    if (!match || (!match[1] && !match[2]) || fileSize === 0) {
+      this.throwInvalidRange(fileSize);
+    }
+
+    const startText = match[1];
+    const endText = match[2];
+    let start: number;
+    let end: number;
+
+    if (!startText) {
+      const suffixLength = Number(endText);
+      if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+        this.throwInvalidRange(fileSize);
+      }
+      start = Math.max(fileSize - suffixLength, 0);
+      end = fileSize - 1;
+    } else {
+      start = Number(startText);
+      end = endText ? Number(endText) : fileSize - 1;
+    }
+
+    if (
+      !Number.isSafeInteger(start) ||
+      !Number.isSafeInteger(end) ||
+      start < 0 ||
+      start >= fileSize ||
+      end < start
+    ) {
+      this.throwInvalidRange(fileSize);
+    }
+
+    return { start, end: Math.min(end, fileSize - 1) };
+  }
+
+  private throwInvalidRange(fileSize: number): never {
+    throw new HttpException(
+      {
+        statusCode: HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+        message: 'Requested range not satisfiable',
+        contentRange: `bytes */${fileSize}`,
+      },
+      HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE,
+    );
   }
 
   private async save(

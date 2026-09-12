@@ -36,7 +36,9 @@ class _StatCardState extends State<StatCard> {
         width: 100,
         padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
         decoration: BoxDecoration(
-          color: isTapped ? themeColor.withOpacity(0.1) : Theme.of(context).cardColor,
+          color: isTapped
+              ? themeColor.withValues(alpha:0.1)
+              : Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isTapped ? themeColor : Colors.grey.shade800,
@@ -44,7 +46,7 @@ class _StatCardState extends State<StatCard> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha:0.1),
               blurRadius: 6,
               offset: const Offset(0, 3),
             ),
@@ -53,18 +55,17 @@ class _StatCardState extends State<StatCard> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              widget.icon,
-              size: 28,
-              color: themeColor,
-            ),
+            Icon(widget.icon, size: 28, color: themeColor),
             const SizedBox(height: 8),
             Text(
               '${widget.value}',
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: isTapped ? themeColor : Theme.of(context).textTheme.bodyLarge?.color ?? Colors.white70,
+                color: isTapped
+                    ? themeColor
+                    : Theme.of(context).textTheme.bodyLarge?.color ??
+                          Colors.white70,
               ),
             ),
             const SizedBox(height: 4),

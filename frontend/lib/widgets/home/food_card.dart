@@ -28,6 +28,7 @@ class FoodCard extends StatelessWidget {
               child: Center(
                 child: Image.network(
                   food.filePathImage,
+                  webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stackTrace) => Icon(
                     Icons.fastfood,

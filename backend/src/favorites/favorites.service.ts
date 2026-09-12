@@ -13,7 +13,7 @@ export class FavoritesService {
   findAll(userId?: string): Promise<Favorite[]> {
     return this.favoriteRepository.find({
       where: userId ? { userId } : {},
-      relations: { recipe: true },
+      relations: { recipe: { creator: true, categories: true } },
       order: { createdAt: 'DESC' },
     });
   }

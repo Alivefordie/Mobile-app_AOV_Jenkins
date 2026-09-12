@@ -1,6 +1,12 @@
-class CategoryEvent {}
+abstract class CategoryEvent {
+  CategoryEvent();
+}
+
+class FetchCategoriesEvent extends CategoryEvent {
+  FetchCategoriesEvent();
+}
 
 class CategorySelectEvent extends CategoryEvent {
-  CategorySelectEvent(this.category);
-  final String category;
+  final String id;
+  CategorySelectEvent(this.id);
 }

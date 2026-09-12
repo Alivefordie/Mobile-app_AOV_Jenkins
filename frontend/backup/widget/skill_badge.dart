@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
 
 class SkillBadge extends StatelessWidget {
-  const SkillBadge({
-    super.key,
-    required this.skillName,
-    required this.color,
-  });
+  const SkillBadge({super.key, required this.skillName, required this.color});
 
   final String skillName;
   final Color color;
@@ -15,12 +11,9 @@ class SkillBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20.0),
-        border: Border.all(
-          color: color,
-          width: 1.5,
-        ),
+        border: Border.all(color: color, width: 1.5),
       ),
       child: Text(
         skillName,
