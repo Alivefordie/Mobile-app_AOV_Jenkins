@@ -5,6 +5,7 @@ import jwtConfig from '../config/jwt.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
+import { BannerModule } from './banner/banner.module';
 import { CategoriesModule } from './categories/categories.module';
 import { DatabaseModule } from './database/database.module';
 import { FavoritesModule } from './favorites/favorites.module';
@@ -27,6 +28,7 @@ import { UsersModule } from './users/users.module';
     DatabaseModule,
     UsersModule,
     AuthModule,
+    BannerModule,
     CategoriesModule,
     RecipesModule,
     IngredientsModule,

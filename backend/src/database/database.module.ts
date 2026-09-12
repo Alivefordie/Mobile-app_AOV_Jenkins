@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Banner } from '../banner/entities/banner.entity';
 import { Category } from '../categories/entities/category.entity';
 import { Favorite } from '../favorites/entities/favorite.entity';
 import { Ingredient } from '../ingredients/entities/ingredient.entity';
@@ -29,6 +30,7 @@ const entities = [
   RecipeAccess,
   Review,
   Favorite,
+  Banner,
 ];
 
 @Module({

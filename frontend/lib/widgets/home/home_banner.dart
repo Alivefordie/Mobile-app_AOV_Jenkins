@@ -1,20 +1,45 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_application_1/bloc/banner/banner_bloc.dart';
+import 'package:flutter_application_1/bloc/banner/banner_state.dart';
+import 'package:flutter_application_1/models/banner_item.dart';
 
 class HomeBanner extends StatelessWidget {
   const HomeBanner({super.key});
 
   @override
   Widget build(BuildContext context) {
+    return BlocBuilder<BannerBloc, BannerState>(
+      builder: (context, state) {
+        if (state is BannerLoading || state is BannerInitial) {
+          return const _BannerFrame(child: _BannerPlaceholder());
+        }
+
+        // โหลดไม่สำเร็จ หรือยังไม่มีแบนเนอร์ = ซ่อนไปเลย
+        if (state is! BannerLoaded || state.banners.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return _BannerCarousel(banners: state.banners);
+      },
+    );
+  }
+}
+
+/// กรอบการ์ดของแบนเนอร์ (กำหนดความสูงตามขนาดจอ)
+class _BannerFrame extends StatelessWidget {
+  const _BannerFrame({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width = constraints.maxWidth;
         // < 600 มือถือ, >= 600 iPad
-        final isMedium = width >= 600;
-
-        final height = isMedium ? 260.0 : 206.0;
-        final padding = isMedium ? 28.0 : 20.0;
-        final titleSize = isMedium ? 30.0 : 24.0;
-        final subtitleSize = isMedium ? 16.0 : 14.0;
+        final isMedium = constraints.maxWidth >= 600;
 
         return Card(
           elevation: 6,
@@ -23,92 +48,152 @@ class HomeBanner extends StatelessWidget {
             borderRadius: BorderRadius.circular(25),
           ),
           clipBehavior: Clip.antiAlias,
-          child: Container(
-            height: height,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Color(0xFFD32F2F), // แดงสด
-                  Color(0xFFF57C00), // ส้มอุ่น
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Padding(
-                    padding: EdgeInsets.all(padding),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          "Free Delivery\nFor Spaghetti",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: titleSize,
-                            fontWeight: FontWeight.bold,
-                            shadows: const [
-                              Shadow(
-                                color: Colors.black26,
-                                offset: Offset(0, 1),
-                                blurRadius: 3,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          "Up to 3 times per day",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: subtitleSize,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: () {},
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFFFEB3B), // เหลืองสด
-                            foregroundColor: const Color(0xFFD32F2F),
-                            elevation: 2,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: isMedium ? 28 : 20,
-                              vertical: isMedium ? 16 : 12,
-                            ),
-                          ),
-                          child: Text(
-                            "Order Now",
-                            style: TextStyle(
-                              fontSize: isMedium ? 16 : 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        )
-                      ],
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Image.network(
-                    "https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9",
-                    fit: BoxFit.cover,
-                    height: double.infinity,
-                  ),
-                )
-              ],
-            ),
+          margin: EdgeInsets.zero,
+          child: SizedBox(
+            height: isMedium ? 260.0 : 206.0,
+            width: double.infinity,
+            child: child,
           ),
         );
       },
+    );
+  }
+}
+
+class _BannerPlaceholder extends StatelessWidget {
+  const _BannerPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(color: Colors.grey.shade200);
+  }
+}
+
+/// สไลด์โชว์รูปแบนเนอร์ เลื่อนเองทุก 4 วิ และปัดเองได้
+class _BannerCarousel extends StatefulWidget {
+  const _BannerCarousel({required this.banners});
+
+  final List<BannerItem> banners;
+
+  @override
+  State<_BannerCarousel> createState() => _BannerCarouselState();
+}
+
+class _BannerCarouselState extends State<_BannerCarousel> {
+  static const _autoScrollInterval = Duration(seconds: 4);
+  static const _animationDuration = Duration(milliseconds: 450);
+
+  final PageController _controller = PageController();
+  Timer? _timer;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _restartAutoScroll();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BannerCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.banners.length != widget.banners.length) {
+      if (_currentIndex >= widget.banners.length) {
+        _currentIndex = 0;
+        if (_controller.hasClients) _controller.jumpToPage(0);
+      }
+      _restartAutoScroll();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _restartAutoScroll() {
+    _timer?.cancel();
+    // มีรูปเดียวก็ไม่ต้องเลื่อน
+    if (widget.banners.length < 2) return;
+
+    _timer = Timer.periodic(_autoScrollInterval, (_) {
+      if (!mounted || !_controller.hasClients) return;
+      final nextIndex = (_currentIndex + 1) % widget.banners.length;
+      _controller.animateToPage(
+        nextIndex,
+        duration: _animationDuration,
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _BannerFrame(
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: widget.banners.length,
+            onPageChanged: (index) => setState(() => _currentIndex = index),
+            itemBuilder: (_, index) => _BannerImage(
+              imageUrl: widget.banners[index].imageUrl,
+            ),
+          ),
+        ),
+        if (widget.banners.length > 1) ...[
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(widget.banners.length, (index) {
+              final isActive = index == _currentIndex;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                height: 8,
+                width: isActive ? 20 : 8,
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? const Color(0xFFD32F2F)
+                      : Colors.grey.shade400,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              );
+            }),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _BannerImage extends StatelessWidget {
+  const _BannerImage({required this.imageUrl});
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return const _BannerPlaceholder();
+      },
+      errorBuilder: (context, error, stackTrace) => Container(
+        color: Colors.grey.shade200,
+        alignment: Alignment.center,
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          color: Colors.grey.shade500,
+          size: 40,
+        ),
+      ),
     );
   }
 }

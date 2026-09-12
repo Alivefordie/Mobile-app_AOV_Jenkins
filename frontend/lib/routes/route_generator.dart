@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/bloc/banner/banner_bloc.dart';
+import 'package:flutter_application_1/bloc/banner/banner_event.dart';
 import 'package:flutter_application_1/bloc/category/category_bloc.dart';
 import 'package:flutter_application_1/bloc/category/category_event.dart';
 import 'package:flutter_application_1/bloc/auth/auth_bloc.dart';
@@ -7,6 +9,7 @@ import 'package:flutter_application_1/bloc/page/page_bloc.dart';
 import 'package:flutter_application_1/bloc/profile/profile_bloc.dart';
 import 'package:flutter_application_1/repositories/category_repository.dart';
 import 'package:flutter_application_1/repositories/auth_repository.dart';
+import 'package:flutter_application_1/repositories/banner_repository.dart';
 import 'package:flutter_application_1/bloc/profile/profile_event.dart';
 import 'package:flutter_application_1/bloc/recipe_library/recipe_library_bloc.dart';
 import 'package:flutter_application_1/bloc/recipe_library/recipe_library_event.dart';
@@ -58,6 +61,11 @@ class RoutesGenerator {
                 create: (context) =>
                     CategoryBloc(CategoryRepository())
                       ..add(FetchCategoriesEvent()),
+              ),
+              BlocProvider(
+                create: (context) => BannerBloc(
+                  HttpBannerRepository(baseUrl: ApiConfig.apiBaseUrl),
+                )..add(FetchBannersEvent()),
               ),
               BlocProvider(create: (context) => FoodBloc(FoodRepository())),
               BlocProvider(
