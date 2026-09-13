@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { BannerModule } from './banner/banner.module';
+import { CartModule } from './cart/cart.module';
 import { CategoriesModule } from './categories/categories.module';
 import { DatabaseModule } from './database/database.module';
 import { FavoritesModule } from './favorites/favorites.module';
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     RecipeAccessModule,
     ReviewsModule,
     FavoritesModule,
+    CartModule,
     UploadsModule,
     // FoodsModule,
   ],

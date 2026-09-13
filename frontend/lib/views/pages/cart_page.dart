@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/data/cart_notifier.dart';
-import 'package:flutter_application_1/models/cart_item.dart';
+import 'package:flutter_application_1/bloc/cart/cart_bloc.dart';
+import 'package:flutter_application_1/bloc/cart/cart_event.dart';
+import 'package:flutter_application_1/bloc/cart/cart_state.dart';
 import 'package:flutter_application_1/widgets/cart/cart_empty_view.dart';
 import 'package:flutter_application_1/widgets/cart/cart_item_tile.dart';
 import 'package:flutter_application_1/widgets/cart/cart_summary_bar.dart';
 import 'package:flutter_application_1/widgets/profile/profile_colors.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 class CartPage extends StatelessWidget {
   const CartPage({super.key});
@@ -26,6 +28,8 @@ class CartPage extends StatelessWidget {
 
 //
   Future<void> _confirmClear(BuildContext context) async {
+    final cartBloc = context.read<CartBloc>();
+
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -38,7 +42,7 @@ class CartPage extends StatelessWidget {
           ),
           FilledButton(
             onPressed: () {
-              cartNotifier.clear();
+              cartBloc.add(const CartCleared());
               Navigator.pop(dialogContext);
             },
             style: FilledButton.styleFrom(backgroundColor: ProfileColors.ink),
@@ -52,9 +56,10 @@ class CartPage extends StatelessWidget {
 //
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<List<CartItem>>(
-      valueListenable: cartNotifier,
-      builder: (context, items, _) {
+    return BlocBuilder<CartBloc, CartState>(
+      builder: (context, state) {
+        final items = state.items;
+
         return Scaffold(
           backgroundColor: ProfileColors.background,
           appBar: AppBar(
@@ -74,32 +79,87 @@ class CartPage extends StatelessWidget {
                 ),
             ],
           ),
-          body: items.isEmpty
-              ? CartEmptyView(onBrowsePressed: () => Navigator.pop(context))
-              : ListView.separated(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-                  itemCount: items.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    return CartItemTile(
-                      item: item,
-                      onQuantityChanged: (quantity) =>
-                          cartNotifier.setQuantity(item.id, quantity),
-                      onRemove: () => cartNotifier.remove(item.id),
-                    );
-                  },
-                ),
+          body: switch (state.status) {
+            // โหลดรอบแรกยังไม่รู้ว่ามีอะไรในตะกร้า อย่าเพิ่งบอกว่าว่าง
+            CartStatus.initial ||
+            CartStatus.loading when items.isEmpty => const Center(
+              child: CircularProgressIndicator(),
+            ),
+            CartStatus.failure when items.isEmpty => _CartErrorView(
+              message: state.error ?? 'Could not load your cart.',
+              onRetry: () => context.read<CartBloc>().add(const CartRequested()),
+            ),
+            _ when items.isEmpty => CartEmptyView(
+              onBrowsePressed: () => Navigator.pop(context),
+            ),
+            _ => ListView.separated(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+              itemCount: items.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return CartItemTile(
+                  item: item,
+                  onRemove: () =>
+                      context.read<CartBloc>().add(CartItemRemoved(item.id)),
+                );
+              },
+            ),
+          },
           bottomNavigationBar: items.isEmpty
               ? null
               : CartSummaryBar(
-                  itemCount: cartNotifier.itemCount,
-                  subtotal: cartNotifier.subtotal,
+                  itemCount: state.itemCount,
+                  subtotal: state.subtotal,
                   onCheckoutPressed: () => _showComingSoon(context, 'Checkout'),
                 ),
         );
       },
+    );
+  }
+}
+
+// โหลดตะกร้าไม่ได้ตั้งแต่แรก ให้กดลองใหม่ได้
+class _CartErrorView extends StatelessWidget {
+  const _CartErrorView({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              color: ProfileColors.muted,
+              size: 56,
+            ),
+            const SizedBox(height: 18),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: ProfileColors.muted,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 22),
+            FilledButton.icon(
+              onPressed: onRetry,
+              style: FilledButton.styleFrom(backgroundColor: ProfileColors.ink),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Try again'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

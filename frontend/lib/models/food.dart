@@ -6,6 +6,7 @@ class Food {
   final String category;
   final String description;
   final String filePathImage;
+  final double price;
 
   final int? preparationMinutes;
   final int? cookingMinutes;
@@ -19,6 +20,7 @@ class Food {
     required this.category,
     required this.description,
     required this.filePathImage,
+    this.price = 0,
     this.preparationMinutes,
     this.cookingMinutes,
     this.servingCount,
@@ -59,12 +61,20 @@ class Food {
       category: firstCategory?['name'] as String? ?? '',
       description: json['shortDescription'] as String? ?? '',
       filePathImage: json['coverImageUrl'] as String? ?? '',
+      // backend ส่ง numeric ของ postgres มาเป็น string เช่น "129.00"
+      price: _toDouble(json['price']),
       preparationMinutes: _toInt(json['preparationMinutes']),
       cookingMinutes: _toInt(json['cookingMinutes']),
       servingCount: _toInt(json['servingCount']),
       difficulty: json['difficulty'] as String?,
       steps: steps,
     );
+  }
+
+  static double _toDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0;
   }
 
   // numeric ที่ส่งมาจาก API อาจมาเป็น int หรือ String ก็ได้

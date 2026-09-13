@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/data/cart_notifier.dart';
-import 'package:flutter_application_1/models/cart_item.dart';
+import 'package:flutter_application_1/bloc/cart/cart_bloc.dart';
+import 'package:flutter_application_1/bloc/cart/cart_state.dart';
 import 'package:flutter_application_1/widgets/profile/profile_colors.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 class ProfilePageHeader extends StatelessWidget {
   const ProfilePageHeader({
@@ -67,15 +68,16 @@ class _CartButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<List<CartItem>>(
-      valueListenable: cartNotifier,
-      builder: (context, items, child) {
-        final count = cartNotifier.itemCount;
+    return BlocBuilder<CartBloc, CartState>(
+      buildWhen: (previous, current) =>
+          previous.itemCount != current.itemCount,
+      builder: (context, state) {
+        final count = state.itemCount;
 
         return Stack(
           clipBehavior: Clip.none,
           children: [
-            child!,
+            _button,
             if (count > 0)
               Positioned(
                 top: -2,
@@ -103,16 +105,17 @@ class _CartButton extends StatelessWidget {
           ],
         );
       },
-      child: IconButton.filled(
-        onPressed: onPressed,
-        style: IconButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: ProfileColors.ink,
-          fixedSize: const Size(46, 46),
-        ),
-        icon: const Icon(Icons.shopping_bag_outlined),
-        tooltip: 'Cart',
-      ),
     );
   }
+
+  Widget get _button => IconButton.filled(
+    onPressed: onPressed,
+    style: IconButton.styleFrom(
+      backgroundColor: Colors.white,
+      foregroundColor: ProfileColors.ink,
+      fixedSize: const Size(46, 46),
+    ),
+    icon: const Icon(Icons.shopping_bag_outlined),
+    tooltip: 'Cart',
+  );
 }

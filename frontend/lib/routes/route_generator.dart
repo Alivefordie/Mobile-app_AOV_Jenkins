@@ -148,10 +148,10 @@ class RoutesGenerator {
     Widget page,
   ) {
     return MaterialPageRoute(
+      // bloc อ่านเองว่าใครล็อกอินอยู่จาก secure storage
       builder: (_) => BlocProvider(
         create: (context) => RecipeLibraryBloc(
           HttpRecipeLibraryRepository(baseUrl: ApiConfig.apiBaseUrl),
-          userId: ApiConfig.profileUserId,
           collectionType: collectionType,
         )..add(const RecipeLibraryRequested()),
         child: page,

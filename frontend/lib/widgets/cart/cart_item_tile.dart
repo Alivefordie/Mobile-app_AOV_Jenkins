@@ -6,12 +6,10 @@ class CartItemTile extends StatelessWidget {
   const CartItemTile({
     super.key,
     required this.item,
-    required this.onQuantityChanged,
     required this.onRemove,
   });
 
   final CartItem item;
-  final ValueChanged<int> onQuantityChanged;
   final VoidCallback onRemove;
 
   @override
@@ -67,25 +65,15 @@ class CartItemTile extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        item.price == 0
-                            ? 'Free'
-                            : '฿${item.lineTotal.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: ProfileColors.ink,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                    _QuantityStepper(
-                      quantity: item.quantity,
-                      onChanged: onQuantityChanged,
-                    ),
-                  ],
+                Text(
+                  item.price == 0
+                      ? 'Free'
+                      : '฿${item.price.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: ProfileColors.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ],
             ),
@@ -95,69 +83,6 @@ class CartItemTile extends StatelessWidget {
     );
   }
 }
-// ตัวปรับจำนวนสินค้า มีปุ่ม
-class _QuantityStepper extends StatelessWidget {
-  const _QuantityStepper({required this.quantity, required this.onChanged});
-
-  final int quantity;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: ProfileColors.background,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _StepperButton(
-            icon: Icons.remove_rounded,
-            onPressed: () => onChanged(quantity - 1),
-          ),
-          SizedBox(
-            width: 28,
-            child: Text(
-              '$quantity',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: ProfileColors.ink,
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          _StepperButton(
-            icon: Icons.add_rounded,
-            onPressed: () => onChanged(quantity + 1),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ปุ่มกด + - 
-class _StepperButton extends StatelessWidget {
-  const _StepperButton({required this.icon, required this.onPressed});
-
-  final IconData icon;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkResponse(
-      onTap: onPressed,
-      radius: 20,
-      child: Padding(
-        padding: const EdgeInsets.all(7),
-        child: Icon(icon, size: 17, color: ProfileColors.ink),
-      ),
-    );
-  }
-}
-
 // load image
 class _CartItemImage extends StatelessWidget {
   const _CartItemImage({required this.url});

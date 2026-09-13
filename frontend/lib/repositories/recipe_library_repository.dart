@@ -6,10 +6,13 @@ import 'package:flutter_application_1/models/recipe_summary.dart';
 import 'package:http/http.dart' as http;
 
 abstract interface class RecipeLibraryRepository {
+  /// favorites ถูก guard ด้วย JWT จึงต้องแนบ accessToken
+  /// ส่วน myRecipes/drafts/purchased ยังอ้างอิง userId ทาง query
   Future<List<RecipeSummary>> fetchCollection(
-    RecipeCollectionType type,
-    String userId,
-  );
+    RecipeCollectionType type, {
+    required String userId,
+    required String accessToken,
+  });
 }
 
 class HttpRecipeLibraryRepository implements RecipeLibraryRepository {
@@ -26,20 +29,30 @@ class HttpRecipeLibraryRepository implements RecipeLibraryRepository {
 
   @override
   Future<List<RecipeSummary>> fetchCollection(
-    RecipeCollectionType type,
-    String userId,
-  ) async {
+    RecipeCollectionType type, {
+    required String userId,
+    required String accessToken,
+  }) async {
     final normalizedUserId = userId.trim();
-    if (normalizedUserId.isEmpty) {
+    final normalizedToken = accessToken.trim();
+    if (normalizedUserId.isEmpty || normalizedToken.isEmpty) {
       throw const RecipeLibraryException(
-        'PROFILE_USER_ID is missing. Restart the app with a user UUID.',
+        'Please sign in to see your recipes.',
       );
     }
 
     final uri = _uriFor(type, normalizedUserId);
 
     try {
-      final response = await _client.get(uri).timeout(requestTimeout);
+      final response = await _client
+          .get(uri, headers: {'Authorization': 'Bearer $normalizedToken'})
+          .timeout(requestTimeout);
+
+      if (response.statusCode == 401) {
+        throw const RecipeLibraryException(
+          'Your session has expired. Please sign in again.',
+        );
+      }
       if (response.statusCode != 200) {
         throw RecipeLibraryException(
           'Could not load ${type.title.toLowerCase()} '
@@ -97,9 +110,8 @@ class HttpRecipeLibraryRepository implements RecipeLibraryRepository {
       RecipeCollectionType.drafts => Uri.parse(
         '$_baseUrl/recipes',
       ).replace(queryParameters: {'creatorId': userId, 'status': 'draft'}),
-      RecipeCollectionType.favorites => Uri.parse(
-        '$_baseUrl/favorites',
-      ).replace(queryParameters: {'userId': userId}),
+      // /favorites รู้ว่าเป็นของใครจาก token แล้ว ไม่ต้องส่ง userId
+      RecipeCollectionType.favorites => Uri.parse('$_baseUrl/favorites'),
       RecipeCollectionType.purchased => Uri.parse(
         '$_baseUrl/recipe-access/user/${Uri.encodeComponent(userId)}',
       ),

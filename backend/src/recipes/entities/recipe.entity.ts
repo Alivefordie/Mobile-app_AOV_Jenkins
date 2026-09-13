@@ -9,6 +9,7 @@ import {
   ManyToOne,
   OneToMany,
 } from 'typeorm';
+import { CartItem } from '../../cart/entities/cart-item.entity';
 import { Category } from '../../categories/entities/category.entity';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Favorite } from '../../favorites/entities/favorite.entity';
@@ -126,4 +127,7 @@ export class Recipe extends BaseEntity {
 
   @OneToMany(() => Favorite, (favorite) => favorite.recipe)
   favorites!: Favorite[];
+
+  @OneToMany(() => CartItem, (item) => item.recipe)
+  cartItems!: CartItem[];
 }

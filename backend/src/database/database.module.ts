@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Banner } from '../banner/entities/banner.entity';
+import { CartItem } from '../cart/entities/cart-item.entity';
+import { Cart } from '../cart/entities/cart.entity';
 import { Category } from '../categories/entities/category.entity';
 import { Favorite } from '../favorites/entities/favorite.entity';
 import { Ingredient } from '../ingredients/entities/ingredient.entity';
@@ -31,6 +33,8 @@ const entities = [
   Review,
   Favorite,
   Banner,
+  Cart,
+  CartItem,
 ];
 
 @Module({

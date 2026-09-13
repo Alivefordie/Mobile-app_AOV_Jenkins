@@ -1,4 +1,5 @@
-import { Column, Entity, Index, OneToMany } from 'typeorm';
+import { Column, Entity, Index, OneToMany, OneToOne } from 'typeorm';
+import { Cart } from '../../cart/entities/cart.entity';
 import { BaseEntity } from '../../common/entities/base.entity';
 import { Favorite } from '../../favorites/entities/favorite.entity';
 import { Order } from '../../orders/entities/order.entity';
@@ -58,4 +59,7 @@ export class User extends BaseEntity {
 
   @OneToMany(() => Favorite, (favorite) => favorite.user)
   favorites!: Favorite[];
+
+  @OneToOne(() => Cart, (cart) => cart.user)
+  cart!: Cart | null;
 }
