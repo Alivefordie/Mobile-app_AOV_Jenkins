@@ -5,10 +5,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { createReadStream, type ReadStream } from 'node:fs';
-import { mkdir, stat, writeFile } from 'node:fs/promises';
-import { basename, extname, join, resolve, sep } from 'node:path';
+import { basename, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
+import { R2Provider } from './storage/r2.provider';
 
 export enum UploadKind {
   IMAGES = 'images',
@@ -31,7 +31,7 @@ export interface UploadResult {
 }
 
 export interface StoredFile {
-  stream: ReadStream;
+  stream: Readable;
   mimeType: string;
   size: number;
   contentRange?: string;
@@ -67,7 +67,7 @@ const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
 
 @Injectable()
 export class UploadsService {
-  private readonly uploadRoot = resolve(process.cwd(), 'uploads');
+  constructor(private readonly r2: R2Provider) {}
 
   saveImage(file?: UploadedFileData): Promise<UploadResult> {
     return this.save(file, UploadKind.IMAGES, IMAGE_TYPES, 10 * 1024 * 1024);
@@ -87,33 +87,38 @@ export class UploadsService {
       throw new BadRequestException('Invalid filename');
     }
 
-    const directory = resolve(this.uploadRoot, kind);
-    const filePath = resolve(directory, safeFilename);
-    if (!filePath.startsWith(`${directory}${sep}`)) {
-      throw new BadRequestException('Invalid file path');
-    }
+    const key = `${kind}/${safeFilename}`;
 
     try {
-      const fileStat = await stat(filePath);
-      if (!fileStat.isFile()) throw new NotFoundException('File not found');
+      const object = await this.r2.head(key);
+      const fileSize = object.ContentLength;
+      if (fileSize === undefined) throw new NotFoundException('File not found');
 
-      const range = this.parseRange(rangeHeader, fileStat.size);
-      const stream = range
-        ? createReadStream(filePath, { start: range.start, end: range.end })
-        : createReadStream(filePath);
+      const range = this.parseRange(rangeHeader, fileSize);
+      const downloaded = await this.r2.download(
+        key,
+        range ? `bytes=${range.start}-${range.end}` : undefined,
+      );
+      if (!downloaded.Body) throw new NotFoundException('File not found');
 
       return {
-        stream,
+        stream: downloaded.Body as Readable,
         mimeType:
+          object.ContentType ??
           MIME_BY_EXTENSION[extname(safeFilename).toLowerCase()] ??
           'application/octet-stream',
-        size: range ? range.end - range.start + 1 : fileStat.size,
+        size: range ? range.end - range.start + 1 : fileSize,
         contentRange: range
-          ? `bytes ${range.start}-${range.end}/${fileStat.size}`
+          ? `bytes ${range.start}-${range.end}/${fileSize}`
           : undefined,
       };
     } catch (error: unknown) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      const r2Error = error as { name?: string; Code?: string };
+      if (
+        r2Error.name === 'NoSuchKey' ||
+        r2Error.name === 'NotFound' ||
+        r2Error.Code === 'NoSuchKey'
+      ) {
         throw new NotFoundException('File not found');
       }
       throw error;
@@ -192,11 +197,8 @@ export class UploadsService {
       );
     }
 
-    const directory = join(this.uploadRoot, kind);
-    await mkdir(directory, { recursive: true });
-
     const filename = `${randomUUID()}${extension}`;
-    await writeFile(join(directory, filename), file.buffer, { flag: 'wx' });
+    await this.r2.upload(`${kind}/${filename}`, file.buffer, file.mimetype);
 
     return {
       filename,

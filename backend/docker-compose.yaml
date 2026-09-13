@@ -29,14 +29,12 @@ services:
       DATABASE_USER: ${POSTGRES_USER:-root}
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-root}
       DATABASE_URL: postgresql://${POSTGRES_USER:-root}:${POSTGRES_PASSWORD:-root}@postgres:5432/${POSTGRES_DB:-dev}
-      UPLOAD_DIR: /app/uploads
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME}
     ports:
       - "${API_PORT:-3000}:3000"
-    volumes:
-      # Windows example: UPLOADS_PATH=C:/Users/your-name/my-app/uploads
-      - type: bind
-        source: ${UPLOADS_PATH:-./uploads}
-        target: /app/uploads
     depends_on:
       postgres:
         condition: service_healthy

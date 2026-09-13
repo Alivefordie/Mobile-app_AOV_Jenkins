@@ -18,13 +18,14 @@ import { RecipesModule } from './recipes/recipes.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
+import r2ClientConfig from '../config/r2.client.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.production', '.env'],
-      load: [databaseConfig, jwtConfig],
+      envFilePath: ['.env.production', '.env', '.env.development.local'],
+      load: [databaseConfig, jwtConfig, r2ClientConfig],
     }),
     DatabaseModule,
     UsersModule,
