@@ -7,57 +7,12 @@ import 'package:flutter_application_1/bloc/cart/cart_event.dart';
 import 'package:flutter_application_1/bloc/favorite/favorite_bloc.dart';
 import 'package:flutter_application_1/bloc/favorite/favorite_event.dart';
 import 'package:flutter_application_1/routes/app_routes.dart';
-import 'package:flutter_application_1/widgets/login/login_logo.dart';
 import 'package:flutter_application_1/widgets/register/register_form.dart';
+import 'package:flutter_application_1/widgets/register/register_logo.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-class RegisterPage extends StatefulWidget {
+class RegisterPage extends StatelessWidget {
   const RegisterPage({super.key});
-
-  @override
-  State<RegisterPage> createState() => _RegisterPageState();
-}
-
-class _RegisterPageState extends State<RegisterPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _displayNameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
-  bool _acceptedTerms = false;
-
-  @override
-  void dispose() {
-    _displayNameController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-
-    if (!_acceptedTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please accept the terms and privacy policy.'),
-        ),
-      );
-      return;
-    }
-
-    final email = _emailController.text.trim();
-    context.read<AuthBloc>().add(
-      AuthRegisterRequested(
-        email: email,
-        password: _passwordController.text,
-        displayName: _displayNameController.text.trim(),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -87,26 +42,22 @@ class _RegisterPageState extends State<RegisterPage> {
           child: SingleChildScrollView(
             child: Column(
               children: [
-                const LoginLogo(),
+                const RegisterLogo(),
                 RegisterForm(
-                  formKey: _formKey,
-                  displayNameController: _displayNameController,
-                  emailController: _emailController,
-                  passwordController: _passwordController,
-                  confirmPasswordController: _confirmPasswordController,
-                  obscurePassword: _obscurePassword,
-                  obscureConfirmPassword: _obscureConfirmPassword,
-                  onTogglePassword: () => setState(() {
-                    _obscurePassword = !_obscurePassword;
-                  }),
-                  onToggleConfirmPassword: () => setState(() {
-                    _obscureConfirmPassword = !_obscureConfirmPassword;
-                  }),
-                  acceptedTerms: _acceptedTerms,
-                  onTermsChanged: (value) => setState(() {
-                    _acceptedTerms = value;
-                  }),
-                  onSubmit: _submit,
+                  onSubmit:
+                      ({
+                        required email,
+                        required password,
+                        required displayName,
+                      }) {
+                        context.read<AuthBloc>().add(
+                          AuthRegisterRequested(
+                            email: email,
+                            password: password,
+                            displayName: displayName,
+                          ),
+                        );
+                      },
                   onSignIn: () {
                     Navigator.pushReplacementNamed(context, AppRoutes.login);
                   },
