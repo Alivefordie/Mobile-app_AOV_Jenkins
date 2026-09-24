@@ -2,26 +2,32 @@ pipeline {
     agent {
         docker {
             image 'node:20-alpine'
+            label 'linux-agent'
         }
     }
 
     stages {
         stage('Install') {
             steps {
-                sh 'cd backend'
-                sh 'npm ci'
+                dir('backend') {
+                    sh 'npm ci'
+                }
             }
         }
 
         stage('Lint') {
             steps {
-                sh 'npm run lint'
+                dir('backend') {
+                    sh 'npm run lint'
+                }
             }
         }
 
         stage('Unit Test') {
             steps {
-                sh 'npm test'
+                dir('backend') {
+                    sh 'npm test'
+                }
             }
         }
     }
