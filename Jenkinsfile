@@ -54,7 +54,7 @@ pipeline {
         }
 
         failure {
-            echo "${env.APP_NAME} Pipeline failed at stage: ${env.STAGE_NAME}"
+            echo "${env.APP_NAME} Pipeline failed at stage: ${env.STAGE_NAME}."
         }
 
         always {
