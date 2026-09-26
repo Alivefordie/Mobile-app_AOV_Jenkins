@@ -11,7 +11,8 @@ pipeline {
     }
 
     options {
-        // A pipeline should never run unbounded because a hung build can waste agent resources indefinitely.
+        // A pipeline should never run unbounded because a hung build
+        // can waste agent resources indefinitely.
         timeout(time: 10, unit: 'MINUTES')
     }
 
@@ -19,6 +20,13 @@ pipeline {
         stage('Environment') {
             steps {
                 echo "APP_NAME=${APP_NAME}, NODE_ENV=${NODE_ENV}"
+
+                sh '''
+                    node --version
+                    npm --version
+                    docker --version
+                    docker compose version
+                '''
             }
         }
 
@@ -67,12 +75,12 @@ pipeline {
                     withSonarQubeEnv('SonarQube') {
                         sh '''
                             npx @sonar/scan \
-                            -Dsonar.projectKey=taskflow-api \
-                            -Dsonar.sources=src \
-                            -Dsonar.tests=src \
-                            -Dsonar.exclusions=**/*.spec.ts \
-                            -Dsonar.test.inclusions=**/*.spec.ts \
-                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                              -Dsonar.projectKey=taskflow-api \
+                              -Dsonar.sources=src \
+                              -Dsonar.tests=src \
+                              -Dsonar.exclusions=**/*.spec.ts \
+                              -Dsonar.test.inclusions=**/*.spec.ts \
+                              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
                         '''
                     }
                 }
@@ -86,7 +94,60 @@ pipeline {
                 }
             }
         }
-}
+
+        stage('E2E') {
+            steps {
+                dir('backend') {
+                    /*
+                     * docker CLI runs on linux-agent.
+                     * The CLI connects to the DinD daemon.
+                     */
+                    sh '''
+                        docker compose down --remove-orphans || true
+                        docker compose up -d --build
+                        docker compose ps
+                    '''
+
+                    /*
+                     * Run Playwright using Microsoft's official
+                     * Playwright Docker image.
+                     */
+                    script {
+                        docker.image('mcr.microsoft.com/playwright:v1.63.0-noble').inside {
+                            sh '''
+                                npm ci
+
+                                BASE_URL=http://host.docker.internal:3000 \
+                                  npx playwright test
+                            '''
+                        }
+                    }
+                }
+            }
+
+            post {
+                always {
+                    dir('backend') {
+                        junit(
+                            allowEmptyResults: true,
+                            testResults: 'reports/e2e-junit.xml'
+                        )
+
+                        archiveArtifacts(
+                            artifacts: 'playwright-report/**',
+                            allowEmptyArchive: true
+                        )
+
+                        sh '''
+                            docker compose logs api || true
+                            docker compose down --remove-orphans || true
+                        '''
+                    }
+                }
+            }
+        }
+    }
+
     post {
         success {
             echo "${env.APP_NAME} Pipeline completed successfully on ${env.NODE_ENV} environment."
@@ -97,8 +158,10 @@ pipeline {
         }
 
         always {
-            archiveArtifacts artifacts: '**/npm-debug.log*',
-                             allowEmptyArchive: true
+            archiveArtifacts(
+                artifacts: '**/npm-debug.log*',
+                allowEmptyArchive: true
+            )
         }
     }
 }
