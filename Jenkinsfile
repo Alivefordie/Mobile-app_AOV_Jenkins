@@ -42,7 +42,19 @@ pipeline {
         stage('Unit Test') {
             steps {
                 dir('backend') {
-                    sh 'npm test'
+                    sh 'npm test -- --coverage --reporters=jest-junit'
+                }
+            }
+
+            post {
+                always {
+                    dir('backend') {
+                        junit 'reports/junit.xml'
+
+                        publishCoverage adapters: [
+                            coberturaAdapter('coverage/cobertura-coverage.xml')
+                        ]
+                    }
                 }
             }
         }
