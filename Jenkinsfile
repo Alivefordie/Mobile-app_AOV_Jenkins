@@ -3,6 +3,7 @@ pipeline {
         docker {
             image 'node:22-alpine'
             label 'linux-agent'
+            args '--network jenkins'
         }
     }
 
@@ -39,54 +40,54 @@ pipeline {
             }
         }
 
-    stage('Unit Test') {
-        steps {
-            dir('backend') {
-                sh 'npm test -- --coverage --reporters=jest-junit'
-            }
-        }
-
-        post {
-            always {
+        stage('Unit Test') {
+            steps {
                 dir('backend') {
-                    junit 'reports/junit.xml'
+                    sh 'npm test -- --coverage --reporters=jest-junit'
+                }
+            }
 
-                    recordCoverage(
-                        tools: [[
-                            parser: 'COBERTURA',
-                            pattern: 'coverage/cobertura-coverage.xml'
-                        ]]
-                    )
+            post {
+                always {
+                    dir('backend') {
+                        junit 'reports/junit.xml'
+
+                        recordCoverage(
+                            tools: [[
+                                parser: 'COBERTURA',
+                                pattern: 'coverage/cobertura-coverage.xml'
+                            ]]
+                        )
+                    }
                 }
             }
         }
-    }
 
-    stage('SonarQube Analysis') {
-        steps {
-            dir('backend') {
-                withSonarQubeEnv('SonarQube') {
-                    sh '''
-                        npx @sonar/scan \
-                        -Dsonar.projectKey=taskflow-api \
-                        -Dsonar.sources=src \
-                        -Dsonar.tests=src \
-                        -Dsonar.exclusions=**/*.spec.ts \
-                        -Dsonar.test.inclusions=**/*.spec.ts \
-                        -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-                    '''
+        stage('SonarQube Analysis') {
+            steps {
+                dir('backend') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh '''
+                            npx @sonar/scan \
+                            -Dsonar.projectKey=taskflow-api \
+                            -Dsonar.sources=src \
+                            -Dsonar.tests=src \
+                            -Dsonar.exclusions=**/*.spec.ts \
+                            -Dsonar.test.inclusions=**/*.spec.ts \
+                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                        '''
+                    }
                 }
             }
         }
-    }
 
-    stage('Quality Gate') {
-        steps {
-            timeout(time: 5, unit: 'MINUTES') {
-                waitForQualityGate abortPipeline: true
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
             }
         }
-    }
 }
     post {
         success {
