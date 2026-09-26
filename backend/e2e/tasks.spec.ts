@@ -1,28 +1,45 @@
-import { defineConfig } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
-export default defineConfig({
-  testDir: './e2e',
+test('list tasks', async ({ request }) => {
+  const response = await request.get('/tasks');
 
-  workers: process.env.CI ? 1 : undefined,
+  expect(response.ok()).toBeTruthy();
 
-  reporter: [
-    [
-      'junit',
-      {
-        outputFile: 'reports/e2e-junit.xml',
-      },
-    ],
-    [
-      'html',
-      {
-        outputFolder: 'playwright-report',
-        open: 'never',
-        doNotInlineAssets: true,
-      },
-    ],
-  ],
+  const tasks = await response.json();
+  expect(Array.isArray(tasks)).toBeTruthy();
+});
 
-  use: {
-    baseURL: process.env.BASE_URL || 'http://localhost:3000',
-  },
+test('create task', async ({ request }) => {
+  const response = await request.post('/tasks', {
+    data: {
+      title: 'Playwright task',
+    },
+  });
+
+  expect(response.status()).toBe(201);
+
+  const task = await response.json();
+
+  expect(task.title).toBe('Playwright task');
+  expect(task.done).toBe(false);
+});
+
+test('mark task done', async ({ request }) => {
+  const createResponse = await request.post('/tasks', {
+    data: {
+      title: 'Complete me',
+    },
+  });
+
+  expect(createResponse.status()).toBe(201);
+
+  const task = await createResponse.json();
+
+  const response = await request.patch(`/tasks/${task.id}/done`);
+
+  expect(response.ok()).toBeTruthy();
+
+  const updatedTask = await response.json();
+
+  expect(updatedTask.done).toBe(true);
 });

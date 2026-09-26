@@ -17,6 +17,7 @@ export default defineConfig({
       {
         outputFolder: 'playwright-report',
         open: 'never',
+        doNotInlineAssets: true,
       },
     ],
   ],
