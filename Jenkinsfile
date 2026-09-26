@@ -477,6 +477,11 @@ pipeline {
                 artifacts: 'backend/reports/**',
                 allowEmptyArchive: true
             )
+
+            sh '''
+                echo "Cleaning dangling Docker images..."
+                docker image prune -f || true
+            '''
         }
     }
 }
