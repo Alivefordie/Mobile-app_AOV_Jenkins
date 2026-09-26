@@ -194,6 +194,65 @@ pipeline {
             }
         }
 
+        stage('Sign SBOM') {
+            steps {
+                dir('backend') {
+                    withCredentials([
+                        file(
+                            credentialsId: 'cosign-private-key',
+                            variable: 'COSIGN_KEY_FILE'
+                        ),
+                        string(
+                            credentialsId: 'cosign-password',
+                            variable: 'COSIGN_PASSWORD'
+                        )
+                    ]) {
+                        sh '''
+                            docker rm -f cosign-sbom-sign || true
+
+                            docker create \
+                            --name cosign-sbom-sign \
+                            -e COSIGN_PASSWORD="$COSIGN_PASSWORD" \
+                            ghcr.io/sigstore/cosign/cosign:latest \
+                            sign-blob \
+                            --yes \
+                            --key /work/cosign.key \
+                            --bundle /work/taskflow-api.cdx.sigstore.json \
+                            /work/taskflow-api.cdx.json
+
+                            docker cp reports/taskflow-api.cdx.json \
+                            cosign-sbom-sign:/work/taskflow-api.cdx.json
+
+                            docker cp "$COSIGN_KEY_FILE" \
+                            cosign-sbom-sign:/work/cosign.key
+
+                            docker start -a cosign-sbom-sign
+
+                            docker cp \
+                            cosign-sbom-sign:/work/taskflow-api.cdx.sigstore.json \
+                            reports/taskflow-api.cdx.sigstore.json
+
+                            docker rm cosign-sbom-sign
+                        '''
+                    }
+                }
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: '''
+                            backend/reports/taskflow-api.cdx.json,
+                            backend/reports/taskflow-api.cdx.sigstore.json
+                        ''',
+                        allowEmptyArchive: true
+                    )
+
+                    sh 'docker rm -f cosign-sbom-sign || true'
+                }
+            }
+        }
+
         stage('Lint') {
             steps {
                 dir('backend') {
