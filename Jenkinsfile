@@ -167,6 +167,23 @@ pipeline {
             }
         }
 
+        stage('Generate SBOM') {
+            steps {
+                dir('backend') {
+                    sh '''
+                        mkdir -p reports
+
+                        docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v "$PWD/reports:/reports" \
+                        anchore/syft:latest \
+                        taskflow-api:latest \
+                        -o cyclonedx-json=/reports/taskflow-api.cdx.json
+                    '''
+                }
+            }
+        }
+
         stage('Lint') {
             steps {
                 dir('backend') {
