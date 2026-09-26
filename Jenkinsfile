@@ -82,6 +82,36 @@ pipeline {
             }
         }
 
+        stage('SAST - Semgrep') {
+            steps {
+                dir('backend') {
+                    sh '''
+                        mkdir -p reports
+
+                        docker run --rm \
+                        -v "$PWD:/src" \
+                        -w /src \
+                        semgrep/semgrep:latest \
+                        semgrep scan \
+                        --config=p/owasp-top-ten \
+                        --config=p/nodejs \
+                        --sarif \
+                        --output=reports/semgrep.sarif \
+                        .
+                    '''
+                }
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'backend/reports/semgrep.sarif',
+                        allowEmptyArchive: true
+                    )
+                }
+            }
+        }
+        
         stage('Lint') {
             steps {
                 dir('backend') {
