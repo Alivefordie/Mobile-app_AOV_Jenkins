@@ -29,4 +29,29 @@ export class AppController {
   getEnvironment(): string {
     return this.appService.getEnvironment();
   }
+
+  @Get('status')
+  getStatus(): string {
+    return this.appService.getStatus();
+  }
+
+  @Get('author')
+  getAuthor(): string {
+    return this.appService.getAuthor();
+  }
+
+  @Get('build-number')
+  getBuildNumber(): number {
+    return this.appService.getBuildNumber();
+  }
+
+  @Get('ready')
+  isReady(): boolean {
+    return this.appService.isReady();
+  }
+
+  @Get('description')
+  getDescription(): string {
+    return this.appService.getDescription();
+  }
 }
