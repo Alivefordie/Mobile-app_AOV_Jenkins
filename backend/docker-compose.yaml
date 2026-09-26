@@ -23,11 +23,11 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
-      DATABASE_HOST: postgres
-      DATABASE_PORT: 5432
-      DATABASE_NAME: ${POSTGRES_DB:-dev}
-      DATABASE_USER: ${POSTGRES_USER:-root}
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-root}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-dev}
+      DB_USER: ${POSTGRES_USER:-root}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-root}
       DATABASE_URL: postgresql://${POSTGRES_USER:-root}:${POSTGRES_PASSWORD:-root}@postgres:5432/${POSTGRES_DB:-dev}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID}
