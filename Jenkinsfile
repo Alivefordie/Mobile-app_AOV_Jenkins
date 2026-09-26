@@ -39,45 +39,51 @@ pipeline {
             }
         }
 
-        stage('Unit Test') {
-            steps {
+    stage('Unit Test') {
+        steps {
+            dir('backend') {
+                sh 'npm test -- --coverage --reporters=jest-junit'
+            }
+        }
+
+        post {
+            always {
                 dir('backend') {
-                    sh 'npm test -- --coverage --reporters=jest-junit'
-                }
-            }
+                    junit 'reports/junit.xml'
 
-            post {
-                always {
-                    dir('backend') {
-                        junit 'reports/junit.xml'
-
-                        publishCoverage adapters: [
-                            coberturaAdapter('coverage/cobertura-coverage.xml')
-                        ]
-                    }
+                    recordCoverage(
+                        tools: [[
+                            parser: 'COBERTURA',
+                            pattern: 'coverage/cobertura-coverage.xml'
+                        ]]
+                    )
                 }
             }
         }
-                
-        stage('Deploy — Staging') {
-            when {
-                branch 'develop'
-            }
-            steps {
-                sh 'echo deploying to staging--.'
+    }
+
+    stage('SonarQube Analysis') {
+        steps {
+            dir('backend') {
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                       sonar-scanner \
+                        -Dsonar.projectKey=taskflow-api \
+                        -Dsonar.sources=src \
+                        -Dsonar.tests=src \
+                        -Dsonar.exclusions=**/*.spec.ts \
+                        -Dsonar.test.inclusions=**/*.spec.ts \
+                        -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                    '''
+                }
             }
         }
+    }
 
-        stage('Deploy — Production') {
-            when {
-                beforeInput true
-                branch 'main'
-            }
-            input {
-                message 'Deploy to production?'
-            }
-            steps {
-                sh 'echo deploying to production--.'
+    stage('Quality Gate') {
+        steps {
+            timeout(time: 5, unit: 'MINUTES') {
+                waitForQualityGate abortPipeline: true
             }
         }
     }
