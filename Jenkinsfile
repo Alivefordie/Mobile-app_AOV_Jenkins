@@ -1,12 +1,10 @@
 pipeline {
     agent {
-        docker {
-            image 'node:22-alpine'
-            label 'linux-agent'
-            args '--network jenkins'
-        }
+        label 'linux-agent'
     }
-
+    tools {
+        nodejs 'node26'
+    }
     environment {
         APP_NAME = 'taskflow-api'
         NODE_ENV = 'test'
