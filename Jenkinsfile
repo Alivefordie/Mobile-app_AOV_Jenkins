@@ -46,6 +46,29 @@ pipeline {
                 '''
             }
         }
+        
+        stage('SAST - ESLint Security') {
+            steps {
+                dir('backend') {
+                    sh '''
+                        mkdir -p reports
+
+                        npx eslint --plugin security src/ \
+                        -f @microsoft/eslint-formatter-sarif \
+                        -o reports/eslint.sarif
+                    '''
+                }
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'backend/reports/eslint.sarif',
+                        allowEmptyArchive: true
+                    )
+                }
+            }
+        }
 
         stage('Install') {
             steps {
