@@ -1,5 +1,7 @@
 package security
 
+default allow := false
+
 deny contains msg if {
     input.metadata.vulnerabilities.critical > 0
     msg := sprintf(
