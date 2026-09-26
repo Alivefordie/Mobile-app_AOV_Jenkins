@@ -87,7 +87,7 @@ pipeline {
             }
         }
     }
-
+}
     post {
         success {
             echo "${env.APP_NAME} Pipeline completed successfully on ${env.NODE_ENV} environment."
