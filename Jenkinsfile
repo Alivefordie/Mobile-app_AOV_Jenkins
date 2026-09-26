@@ -33,6 +33,8 @@ pipeline {
         stage('Secrets Detection') {
             steps {
                 sh '''
+                    mkdir -p reports
+
                     echo "Recent commits:"
                     git log --oneline -5
 
@@ -41,9 +43,20 @@ pipeline {
                         ghcr.io/gitleaks/gitleaks:latest \
                         git /repo \
                         --config=/repo/.gitleaks.toml \
+                        --report-format json \
+                        --report-path /repo/reports/gitleaks.json \
                         --redact \
                         --verbose
                 '''
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'reports/gitleaks.json',
+                        allowEmptyArchive: true
+                    )
+                }
             }
         }
 
