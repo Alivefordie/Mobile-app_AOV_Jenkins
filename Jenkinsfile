@@ -127,6 +127,15 @@ pipeline {
                             testResults: 'reports/e2e-junit.xml'
                         )
 
+                        publishHTML(target: [
+                            reportDir: 'playwright-report',
+                            reportFiles: 'index.html',
+                            reportName: 'Playwright HTML Report',
+                            keepAll: true,
+                            alwaysLinkToLastBuild: true,
+                            allowMissing: true
+                        ])
+
                         archiveArtifacts(
                             artifacts: 'playwright-report/**',
                             allowEmptyArchive: true
