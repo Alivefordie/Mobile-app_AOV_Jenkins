@@ -1,18 +1,18 @@
 pipeline {
     agent {
-        docker {
-            image 'node:20-alpine'
-            label 'linux-agent'
-        }
+        label 'linux-agent'
     }
-
+    tools {
+        nodejs 'node26'
+    }
     environment {
         APP_NAME = 'taskflow-api'
         NODE_ENV = 'test'
     }
 
     options {
-        // A pipeline should never run unbounded because a hung build can waste agent resources indefinitely.
+        // A pipeline should never run unbounded because a hung build
+        // can waste agent resources indefinitely.
         timeout(time: 10, unit: 'MINUTES')
     }
 
@@ -20,6 +20,13 @@ pipeline {
         stage('Environment') {
             steps {
                 echo "APP_NAME=${APP_NAME}, NODE_ENV=${NODE_ENV}"
+
+                sh '''
+                    node --version
+                    npm --version
+                    docker --version
+                    docker compose version
+                '''
             }
         }
 
@@ -42,32 +49,106 @@ pipeline {
         stage('Unit Test') {
             steps {
                 dir('backend') {
-                    sh 'npm test'
+                    sh 'npm test -- --coverage --reporters=jest-junit'
+                }
+            }
+
+            post {
+                always {
+                    dir('backend') {
+                        junit 'reports/junit.xml'
+
+                        recordCoverage(
+                            tools: [[
+                                parser: 'COBERTURA',
+                                pattern: 'coverage/cobertura-coverage.xml'
+                            ]]
+                        )
+                    }
                 }
             }
         }
-                
-        stage('Deploy — Staging') {
-            when {
-                branch 'develop'
-            }
+
+        stage('SonarQube Analysis') {
             steps {
-                sh 'echo deploying to staging--.'
+                dir('backend') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh '''
+                            npx @sonar/scan \
+                              -Dsonar.projectKey=taskflow-api \
+                              -Dsonar.sources=src \
+                              -Dsonar.tests=src \
+                              -Dsonar.exclusions=**/*.spec.ts \
+                              -Dsonar.test.inclusions=**/*.spec.ts \
+                              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                        '''
+                    }
+                }
             }
         }
 
-        stage('Deploy — Production') {
-            when {
-                beforeInput true
-                branch 'main'
-            }
-            input {
-                message 'Deploy to production?'
-            }
+        stage('Quality Gate') {
             steps {
-                sh 'echo deploying to production--.'
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
             }
         }
+
+        stage('E2E') {
+            steps {
+                dir('backend') {
+                    sh '''
+                        docker compose down --remove-orphans || true
+                        docker compose up -d --build
+                        docker compose ps
+                    '''
+
+                    script {
+                        docker.image('mcr.microsoft.com/playwright:v1.63.0-noble')
+                            .inside('--network backend_default') {
+
+                            sh '''
+                                npm ci
+
+                                BASE_URL=http://api:3000 \
+                                npx playwright test
+                            '''
+                        }
+                    }
+                }
+            }
+
+            post {
+                always {
+                    dir('backend') {
+                        junit(
+                            allowEmptyResults: true,
+                            testResults: 'reports/e2e-junit.xml'
+                        )
+
+                        publishHTML(target: [
+                            reportDir: 'playwright-report',
+                            reportFiles: 'index.html',
+                            reportName: 'Playwright HTML Report',
+                            keepAll: true,
+                            alwaysLinkToLastBuild: true,
+                            allowMissing: true
+                        ])
+
+                        archiveArtifacts(
+                            artifacts: 'playwright-report/**',
+                            allowEmptyArchive: true
+                        )
+
+                        sh '''
+                            docker compose logs api || true
+                            docker compose down --remove-orphans || true
+                        '''
+                    }
+                }
+            }
+        }   
     }
 
     post {
@@ -80,8 +161,10 @@ pipeline {
         }
 
         always {
-            archiveArtifacts artifacts: '**/npm-debug.log*',
-                             allowEmptyArchive: true
+            archiveArtifacts(
+                artifacts: '**/npm-debug.log*',
+                allowEmptyArchive: true
+            )
         }
     }
 }
