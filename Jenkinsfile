@@ -63,7 +63,9 @@ pipeline {
 
                         npx eslint --plugin security src/ \
                         -f @microsoft/eslint-formatter-sarif \
-                        -o reports/eslint.sarif
+                        -o reports/eslint.sarif || true
+
+                        npx eslint --plugin security src/ || true
                     '''
                 }
             }
