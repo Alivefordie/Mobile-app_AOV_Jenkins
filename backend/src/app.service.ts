@@ -22,23 +22,23 @@ export class AppService {
     return 'test';
   }
 
-  getStatus(): string {
-    return 'running';
-  }
+  // getStatus(): string {
+  //   return 'running';
+  // }
 
-  getAuthor(): string {
-    return 'admin';
-  }
+  // getAuthor(): string {
+  //   return 'admin';
+  // }
 
-  getBuildNumber(): number {
-    return 1;
-  }
+  // getBuildNumber(): number {
+  //   return 1;
+  // }
 
-  isReady(): boolean {
-    return true;
-  }
+  // isReady(): boolean {
+  //   return true;
+  // }
 
-  getDescription(): string {
-    return 'Taskflow API';
-  }
+  // getDescription(): string {
+  //   return 'Taskflow API';
+  // }
 }
