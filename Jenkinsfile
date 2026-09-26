@@ -170,6 +170,8 @@ pipeline {
         stage('Policy Gate') {
             steps {
                 sh '''
+                    echo "Policy violations:"
+
                     docker run --rm \
                     -v "$WORKSPACE:/workspace" \
                     -w /workspace \
@@ -179,6 +181,19 @@ pipeline {
                     --input backend/reports/npm-audit.json \
                     --format pretty \
                     'data.security.deny'
+
+                    echo "Evaluating policy gate..."
+
+                    docker run --rm \
+                    -v "$WORKSPACE:/workspace" \
+                    -w /workspace \
+                    openpolicyagent/opa:latest \
+                    eval \
+                    --fail \
+                    --data policy/security.rego \
+                    --input backend/reports/npm-audit.json \
+                    --format pretty \
+                    'data.security.allow'
                 '''
             }
         }
