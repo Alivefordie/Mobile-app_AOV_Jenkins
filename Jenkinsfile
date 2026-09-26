@@ -46,7 +46,15 @@ pipeline {
                 '''
             }
         }
-        
+
+        stage('Install') {
+            steps {
+                dir('backend') {
+                    sh 'npm ci'
+                }
+            }
+        }
+
         stage('SAST - ESLint Security') {
             steps {
                 dir('backend') {
@@ -66,14 +74,6 @@ pipeline {
                         artifacts: 'backend/reports/eslint.sarif',
                         allowEmptyArchive: true
                     )
-                }
-            }
-        }
-
-        stage('Install') {
-            steps {
-                dir('backend') {
-                    sh 'npm ci'
                 }
             }
         }
