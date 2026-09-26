@@ -167,6 +167,16 @@ pipeline {
             }
         }
 
+        stage('Build Image') {
+            steps {
+                dir('backend') {
+                    sh '''
+                        docker build -t taskflow-api:latest .
+                    '''
+                }
+            }
+        }
+
         stage('Generate SBOM') {
             steps {
                 dir('backend') {
@@ -177,7 +187,7 @@ pipeline {
                         -v /var/run/docker.sock:/var/run/docker.sock \
                         -v "$PWD/reports:/reports" \
                         anchore/syft:latest \
-                        taskflow-api:latest \
+                        docker:taskflow-api:latest \
                         -o cyclonedx-json=/reports/taskflow-api.cdx.json
                     '''
                 }
