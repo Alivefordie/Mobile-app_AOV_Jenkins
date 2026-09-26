@@ -167,6 +167,22 @@ pipeline {
             }
         }
 
+        stage('Policy Gate') {
+            steps {
+                sh '''
+                    docker run --rm \
+                    -v "$WORKSPACE:/workspace" \
+                    -w /workspace \
+                    openpolicyagent/opa:latest \
+                    eval \
+                    --data policy/security.rego \
+                    --input backend/reports/npm-audit.json \
+                    --format pretty \
+                    'data.security.deny'
+                '''
+            }
+        }
+
         stage('Build Image') {
             steps {
                 dir('backend') {
