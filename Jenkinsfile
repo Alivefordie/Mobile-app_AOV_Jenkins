@@ -426,6 +426,11 @@ pipeline {
                 artifacts: '**/npm-debug.log*',
                 allowEmptyArchive: true
             )
+
+            archiveArtifacts(
+                artifacts: 'backend/reports/**',
+                allowEmptyArchive: true
+            )
         }
     }
 }
