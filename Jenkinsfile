@@ -98,27 +98,21 @@ pipeline {
         stage('E2E') {
             steps {
                 dir('backend') {
-                    /*
-                     * docker CLI runs on linux-agent.
-                     * The CLI connects to the DinD daemon.
-                     */
                     sh '''
                         docker compose down --remove-orphans || true
                         docker compose up -d --build
                         docker compose ps
                     '''
 
-                    /*
-                     * Run Playwright using Microsoft's official
-                     * Playwright Docker image.
-                     */
                     script {
-                        docker.image('mcr.microsoft.com/playwright:v1.63.0-noble').inside {
+                        docker.image('mcr.microsoft.com/playwright:v1.63.0-noble')
+                            .inside('--network backend_default') {
+
                             sh '''
                                 npm ci
 
-                                BASE_URL=http://host.docker.internal:3000 \
-                                  npx playwright test
+                                BASE_URL=http://api:3000 \
+                                npx playwright test
                             '''
                         }
                     }
@@ -145,7 +139,7 @@ pipeline {
                     }
                 }
             }
-        }
+        }   
     }
 
     post {
