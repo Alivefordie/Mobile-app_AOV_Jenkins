@@ -62,10 +62,12 @@ pipeline {
                         mkdir -p reports
 
                         npx eslint --plugin security src/ \
+                        --rule 'prettier/prettier: off' \
                         -f @microsoft/eslint-formatter-sarif \
-                        -o reports/eslint.sarif || true
+                        -o reports/eslint.sarif
 
-                        npx eslint --plugin security src/ || true
+                        npx eslint --plugin security src/ \
+                        --rule 'prettier/prettier: off'
                     '''
                 }
             }
