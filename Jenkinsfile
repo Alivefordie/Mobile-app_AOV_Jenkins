@@ -1,7 +1,7 @@
 pipeline {
     agent {
         docker {
-            image 'node:20-alpine'
+            image 'node:22-alpine'
             label 'linux-agent'
         }
     }
@@ -67,7 +67,7 @@ pipeline {
             dir('backend') {
                 withSonarQubeEnv('SonarQube') {
                     sh '''
-                       sonar-scanner \
+                        npx @sonar/scan \
                         -Dsonar.projectKey=taskflow-api \
                         -Dsonar.sources=src \
                         -Dsonar.tests=src \
