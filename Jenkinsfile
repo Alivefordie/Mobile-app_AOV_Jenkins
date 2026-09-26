@@ -111,7 +111,62 @@ pipeline {
                 }
             }
         }
-        
+
+        stage('SCA - npm audit') {
+            steps {
+                dir('backend') {
+                    script {
+                        sh '''
+                            mkdir -p reports
+
+                            npm audit \
+                            --audit-level=high \
+                            --json \
+                            > reports/npm-audit.json || true
+                        '''
+
+                        def audit = readJSON file: 'reports/npm-audit.json'
+
+                        def vulnerabilities = audit.metadata?.vulnerabilities ?: [:]
+
+                        int critical = (vulnerabilities.critical ?: 0) as int
+                        int high     = (vulnerabilities.high ?: 0) as int
+                        int moderate = (vulnerabilities.moderate ?: 0) as int
+                        int low      = (vulnerabilities.low ?: 0) as int
+
+                        echo """
+                        npm audit summary:
+                        Critical: ${critical}
+                        High:     ${high}
+                        Moderate: ${moderate}
+                        Low:      ${low}
+                        """.stripIndent()
+
+                        if (critical > 0) {
+                            error("SCA gate failed: ${critical} critical vulnerabilities found.")
+                        }
+
+                        if (high > 0 || moderate > 0 || low > 0) {
+                            unstable(
+                                "SCA warning: vulnerabilities found, but no critical vulnerabilities."
+                            )
+                        } else {
+                            echo 'SCA passed: no vulnerabilities found.'
+                        }
+                    }
+                }
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'backend/reports/npm-audit.json',
+                        allowEmptyArchive: true
+                    )
+                }
+            }
+        }
+
         stage('Lint') {
             steps {
                 dir('backend') {
