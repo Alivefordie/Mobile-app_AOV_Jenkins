@@ -30,6 +30,23 @@ pipeline {
             }
         }
 
+        stage('Secrets Detection') {
+            steps {
+                sh '''
+                    echo "Recent commits:"
+                    git log --oneline -5
+
+                    docker run --rm \
+                        -v "$WORKSPACE:/repo" \
+                        ghcr.io/gitleaks/gitleaks:latest \
+                        git /repo \
+                        --config=/repo/.gitleaks.toml \
+                        --redact \
+                        --verbose
+                '''
+            }
+        }
+
         stage('Install') {
             steps {
                 dir('backend') {
