@@ -209,35 +209,36 @@ pipeline {
                     ]) {
                         sh '''
                             docker rm -f cosign-sbom-sign || true
-
+        
                             docker create \
-                            --name cosign-sbom-sign \
-                            -e COSIGN_PASSWORD="$COSIGN_PASSWORD" \
-                            ghcr.io/sigstore/cosign/cosign:latest \
-                            sign-blob \
-                            --yes \
-                            --key /work/cosign.key \
-                            --bundle /work/taskflow-api.cdx.sigstore.json \
-                            /work/taskflow-api.cdx.json
-
+                              --name cosign-sbom-sign \
+                              --user 0 \
+                              -e COSIGN_PASSWORD="$COSIGN_PASSWORD" \
+                              ghcr.io/sigstore/cosign/cosign:latest \
+                              sign-blob \
+                              --yes \
+                              --key /tmp/cosign.key \
+                              --bundle /tmp/taskflow-api.cdx.sigstore.json \
+                              /tmp/taskflow-api.cdx.json
+        
                             docker cp reports/taskflow-api.cdx.json \
-                            cosign-sbom-sign:/work/taskflow-api.cdx.json
-
+                              cosign-sbom-sign:/tmp/taskflow-api.cdx.json
+        
                             docker cp "$COSIGN_KEY_FILE" \
-                            cosign-sbom-sign:/work/cosign.key
-
+                              cosign-sbom-sign:/tmp/cosign.key
+        
                             docker start -a cosign-sbom-sign
-
+        
                             docker cp \
-                            cosign-sbom-sign:/work/taskflow-api.cdx.sigstore.json \
-                            reports/taskflow-api.cdx.sigstore.json
-
+                              cosign-sbom-sign:/tmp/taskflow-api.cdx.sigstore.json \
+                              reports/taskflow-api.cdx.sigstore.json
+        
                             docker rm cosign-sbom-sign
                         '''
                     }
                 }
             }
-
+        
             post {
                 always {
                     archiveArtifacts(
@@ -247,8 +248,53 @@ pipeline {
                         ''',
                         allowEmptyArchive: true
                     )
-
+        
                     sh 'docker rm -f cosign-sbom-sign || true'
+                }
+            }
+        }
+
+        stage('Verify SBOM Signature') {
+            steps {
+                dir('backend') {
+                    withCredentials([
+                        file(
+                            credentialsId: 'cosign-public-key',
+                            variable: 'COSIGN_PUB_FILE'
+                        )
+                    ]) {
+                        sh '''
+                            docker rm -f cosign-sbom-verify || true
+
+                            docker create \
+                            --name cosign-sbom-verify \
+                            --user 0 \
+                            ghcr.io/sigstore/cosign/cosign:latest \
+                            verify-blob \
+                            --key /tmp/cosign.pub \
+                            --bundle /tmp/taskflow-api.cdx.sigstore.json \
+                            /tmp/taskflow-api.cdx.json
+
+                            docker cp reports/taskflow-api.cdx.json \
+                            cosign-sbom-verify:/tmp/taskflow-api.cdx.json
+
+                            docker cp reports/taskflow-api.cdx.sigstore.json \
+                            cosign-sbom-verify:/tmp/taskflow-api.cdx.sigstore.json
+
+                            docker cp "$COSIGN_PUB_FILE" \
+                            cosign-sbom-verify:/tmp/cosign.pub
+
+                            docker start -a cosign-sbom-verify
+
+                            docker rm cosign-sbom-verify
+                        '''
+                    }
+                }
+            }
+
+            post {
+                always {
+                    sh 'docker rm -f cosign-sbom-verify || true'
                 }
             }
         }
