@@ -489,14 +489,13 @@ pipeline {
                             def imageTag = env.GIT_COMMIT.take(7)
                             def imageName = "registry:5000/taskflow-api:${imageTag}"
 
-                            sh """
-                                docker compose down --remove-orphans || true
-
-                                API_IMAGE=${imageName} \
-                                docker compose up -d
-
-                                docker compose ps
-                            """
+                            withEnv(["API_IMAGE=${imageName}"]) {
+                                sh '''
+                                    docker compose down --remove-orphans || true
+                                    docker compose up -d
+                                    docker compose ps
+                                '''
+                            }
                         }
 
                         script {
