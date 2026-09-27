@@ -646,10 +646,16 @@ pipeline {
 
                     def nextColor = currentColor == 'blue' ? 'green' : 'blue'
 
+                    // เก็บไว้ให้ post.failure ใช้
+                    env.PREVIOUS_COLOR = currentColor
+                    env.NEXT_COLOR = nextColor
+                    env.SERVICE_SWITCHED = 'false'
+
                     echo "Current active color : ${currentColor}"
                     echo "Deploying to         : ${nextColor}"
                     echo "Image                : ${env.IMAGE_NAME}"
 
+                    // Deploy inactive color
                     sh """
                         kubectl set image \
                         deployment/taskflow-${nextColor} \
@@ -662,6 +668,7 @@ pipeline {
 
                     echo "${nextColor} rollout completed."
 
+                    // Health check inactive deployment
                     sh """
                         kubectl port-forward \
                         deployment/taskflow-${nextColor} \
@@ -687,10 +694,15 @@ pipeline {
 
                     echo "${nextColor} health check passed. Switching traffic..."
 
+                    // Switch Service
                     sh """
-                        kubectl set selector service taskflow-api \
-                        "app=taskflow-api,color=${nextColor}"
+                        kubectl patch service taskflow-api \
+                        --type merge \
+                        -p '{"spec":{"selector":{"app":"taskflow-api","color":"${nextColor}"}}}'
                     """
+
+                    // ตั้งหลัง switch สำเร็จเท่านั้น
+                    env.SERVICE_SWITCHED = 'true'
 
                     def activeColor = sh(
                         script: '''
@@ -701,6 +713,41 @@ pipeline {
                     ).trim()
 
                     echo "Service now points to: ${activeColor}"
+
+                    if (activeColor != nextColor) {
+                        error "Service switch verification failed."
+                    }
+                }
+            }
+
+            post {
+                failure {
+                    script {
+                        if (
+                            env.SERVICE_SWITCHED == 'true' &&
+                            env.PREVIOUS_COLOR?.trim()
+                        ) {
+                            echo "Deployment failed after traffic switch."
+                            echo "Rolling Service back to: ${env.PREVIOUS_COLOR}"
+
+                            def rollbackStatus = sh(
+                                script: """
+                                    kubectl patch service taskflow-api \
+                                    --type merge \
+                                    -p '{"spec":{"selector":{"app":"taskflow-api","color":"${env.PREVIOUS_COLOR}"}}}'
+                                """,
+                                returnStatus: true
+                            )
+
+                            if (rollbackStatus == 0) {
+                                echo "Rollback successful. Service restored to ${env.PREVIOUS_COLOR}."
+                            } else {
+                                echo "WARNING: Automatic rollback failed."
+                            }
+                        } else {
+                            echo "Failure occurred before traffic switch. No Service rollback required."
+                        }
+                    }
                 }
             }
         }
