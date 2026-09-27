@@ -207,6 +207,7 @@ pipeline {
                         script: """
                             curl -s -o /dev/null \
                             -w "%{http_code}" \
+                            -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' \
                             http://registry:5000/v2/taskflow-api/manifests/${env.IMAGE_TAG}
                         """,
                         returnStdout: true
