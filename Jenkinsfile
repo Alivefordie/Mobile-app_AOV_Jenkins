@@ -620,8 +620,35 @@ pipeline {
             when {
                 branch 'develop'
             }
+
             steps {
-                sh 'echo deploying to staging--.'
+                script {
+                    def currentColor = sh(
+                        script: '''
+                            kubectl get service taskflow-api \
+                            -o jsonpath='{.spec.selector.color}'
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    def nextColor = currentColor == 'blue' ? 'green' : 'blue'
+
+                    echo "Current active color : ${currentColor}"
+                    echo "Deploying to         : ${nextColor}"
+                    echo "Image                : ${env.IMAGE_NAME}"
+
+                    sh """
+                        kubectl set image \
+                        deployment/taskflow-${nextColor} \
+                        taskflow-api=${env.IMAGE_NAME}
+
+                        kubectl rollout status \
+                        deployment/taskflow-${nextColor} \
+                        --timeout=120s
+                    """
+
+                    echo "New ${nextColor} deployment is ready."
+                }
             }
         }
 
