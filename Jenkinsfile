@@ -211,7 +211,7 @@ pipeline {
                             mkdir -p reports
 
                             docker run --rm \
-                            --network jenkins \
+                            --network host \
                             -v "\$PWD/reports:/reports" \
                             aquasec/trivy:latest \
                             image \
