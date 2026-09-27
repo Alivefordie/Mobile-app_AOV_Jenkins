@@ -257,6 +257,18 @@ pipeline {
         }
 
         stage('Container Scan') {
+            when {
+                anyOf {
+                    branch 'main'
+
+                    changeset 'backend/**'
+
+                    expression {
+                        env.NEED_IMAGE_BUILD == 'true'
+                    }
+                }
+            }
+
             steps {
                 dir('backend') {
                     script {
