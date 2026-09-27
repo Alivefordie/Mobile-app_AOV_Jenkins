@@ -210,6 +210,17 @@ pipeline {
                         sh """
                             mkdir -p reports
 
+                            echo "===== Trivy Vulnerability Report ====="
+
+                            docker run --rm \
+                            --network host \
+                            aquasec/trivy:latest \
+                            image \
+                            --insecure \
+                            --severity HIGH,CRITICAL \
+                            --format table \
+                            ${imageName}
+
                             docker run --rm \
                             --network host \
                             -v "\$PWD/reports:/reports" \
@@ -239,16 +250,21 @@ pipeline {
         stage('Generate SBOM') {
             steps {
                 dir('backend') {
-                    sh '''
-                        mkdir -p reports
+                    script {
+                        def imageTag = env.GIT_COMMIT.take(7)
+                        def imageName = "registry:5000/taskflow-api:${imageTag}"
 
-                        docker run --rm \
-                        -v /var/run/docker.sock:/var/run/docker.sock \
-                        -v "$PWD/reports:/reports" \
-                        anchore/syft:latest \
-                        docker:taskflow-api:latest \
-                        -o cyclonedx-json=/reports/taskflow-api.cdx.json
-                    '''
+                        sh """
+                            mkdir -p reports
+
+                            docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v "\$PWD/reports:/reports" \
+                            anchore/syft:latest \
+                            docker:${imageName} \
+                            -o cyclonedx-json=/reports/taskflow-api.cdx.json
+                        """
+                    }
                 }
             }
         }
