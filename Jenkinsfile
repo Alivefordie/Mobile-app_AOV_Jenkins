@@ -185,9 +185,17 @@ pipeline {
         stage('Build Image') {
             steps {
                 dir('backend') {
-                    sh '''
-                        docker build -t taskflow-api:latest .
-                    '''
+                    script {
+                        def imageTag = env.GIT_COMMIT.take(7)
+                        def imageName = "registry:5000/taskflow-api:${imageTag}"
+
+                        echo "Building image: ${imageName}"
+
+                        sh """
+                            docker build -t ${imageName} .
+                            docker push ${imageName}
+                        """
+                    }
                 }
             }
         }
