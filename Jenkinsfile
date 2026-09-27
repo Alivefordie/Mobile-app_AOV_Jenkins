@@ -13,7 +13,7 @@ pipeline {
     options {
         // A pipeline should never run unbounded because a hung build
         // can waste agent resources indefinitely.
-        timeout(time: 10, unit: 'MINUTES')
+        timeout(time: 20, unit: 'MINUTES')
     }
 
     stages {
@@ -484,27 +484,35 @@ pipeline {
 
         stage('E2E') {
             steps {
-                dir('backend') {
-                    sh '''
-                        docker compose down --remove-orphans || true
-                        docker compose up -d --build
-                        docker compose ps
-                    '''
+                    dir('backend') {
+                        script {
+                            def imageTag = env.GIT_COMMIT.take(7)
+                            def imageName = "registry:5000/taskflow-api:${imageTag}"
 
-                    script {
-                        docker.image('mcr.microsoft.com/playwright:v1.63.0-noble')
-                            .inside('--network backend_default') {
+                            sh """
+                                docker compose down --remove-orphans || true
 
-                            sh '''
-                                npm ci
+                                API_IMAGE=${imageName} \
+                                docker compose up -d
 
-                                BASE_URL=http://api:3000 \
-                                npx playwright test
-                            '''
+                                docker compose ps
+                            """
+                        }
+
+                        script {
+                            docker.image('mcr.microsoft.com/playwright:v1.63.0-noble')
+                                .inside('--network backend_default') {
+
+                                sh '''
+                                    npm ci
+
+                                    BASE_URL=http://api:3000 \
+                                    npx playwright test
+                                '''
+                            }
                         }
                     }
                 }
-            }
 
             post {
                 always {
