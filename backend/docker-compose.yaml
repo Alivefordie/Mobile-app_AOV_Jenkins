@@ -17,8 +17,7 @@ services:
       retries: 10
 
   api:
-    build:
-      image: ${API_IMAGE}
+    image: ${API_IMAGE}
     restart: unless-stopped
     environment:
       PORT: 3000

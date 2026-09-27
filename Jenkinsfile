@@ -544,6 +544,49 @@ pipeline {
                 }
             }
         }   
+
+        stage('Kubernetes Connectivity') {
+            when {
+                branch 'develop'
+            }
+
+            steps {
+                sh '''
+                    echo "=== Kubernetes context ==="
+                    kubectl config current-context
+
+                    echo "=== Kubernetes nodes ==="
+                    kubectl get nodes
+
+                    echo "=== Current workloads ==="
+                    kubectl get deployments
+                    kubectl get svc
+                '''
+            }
+        }
+
+        stage('Deploy — Staging') {
+            when {
+                branch 'develop'
+            }
+            steps {
+                sh 'echo deploying to staging--.'
+            }
+        }
+
+        stage('Deploy — Production') {
+            when {
+                beforeInput true
+                branch 'main'
+            }
+            input {
+                message 'Deploy to production?'
+            }
+            steps {
+                sh 'echo deploying to production--.'
+            }
+        }
+
     }
 
     post {
