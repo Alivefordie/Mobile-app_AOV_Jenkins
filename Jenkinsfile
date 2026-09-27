@@ -183,6 +183,11 @@ pipeline {
         }
 
         stage('Build Image') {
+
+            when {
+                changeset 'backend/**'
+            }
+
             steps {
                 dir('backend') {
                     script {
@@ -248,6 +253,11 @@ pipeline {
         }
 
         stage('Generate SBOM') {
+
+            when {
+                branch 'main'
+            }
+
             steps {
                 dir('backend') {
                     script {
@@ -270,6 +280,11 @@ pipeline {
         }
 
         stage('Sign SBOM') {
+
+            when {
+                branch 'main'
+            }
+
             steps {
                 dir('backend') {
                     withCredentials([
@@ -330,6 +345,11 @@ pipeline {
         }
 
         stage('Verify SBOM Signature') {
+
+            when {
+                branch 'main'
+            }
+            
             steps {
                 dir('backend') {
                     withCredentials([
