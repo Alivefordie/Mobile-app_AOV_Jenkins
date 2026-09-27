@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskflow-blue
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: taskflow-api
+      color: blue
+  template:
+    metadata:
+      labels:
+        app: taskflow-api
+        color: blue
+    spec:
+      containers:
+        - name: taskflow-api
+          image: registry:5000/taskflow-api:6b0e7f4
+          ports:
+            - containerPort: 3000
+          env:
+            # - name: NODE_ENV
+            #   value: 'production'
+
+            - name: DB_HOST
+              value: 'postgres'
+
+            - name: DB_PORT
+              value: '5432'
+
+            - name: DB_USER
+              value: 'postgres'
+
+            - name: DB_PASSWORD
+              value: 'postgres'
+
+            - name: DB_NAME
+              value: 'taskflow'
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskflow-green
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: taskflow-api
+      color: green
+  template:
+    metadata:
+      labels:
+        app: taskflow-api
+        color: green
+    spec:
+      containers:
+        - name: taskflow-api
+          image: registry:5000/taskflow-api:6b0e7f4
+          ports:
+            - containerPort: 3000
+          env:
+            # - name: NODE_ENV
+            #   value: 'production'
+
+            - name: DB_HOST
+              value: 'postgres'
+
+            - name: DB_PORT
+              value: '5432'
+
+            - name: DB_USER
+              value: 'postgres'
+
+            - name: DB_PASSWORD
+              value: 'postgres'
+
+            - name: DB_NAME
+              value: 'taskflow'
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskflow-api
+spec:
+  selector:
+    app: taskflow-api
+    color: blue
+  ports:
+    - port: 3000
+      targetPort: 3000
+  type: ClusterIP
