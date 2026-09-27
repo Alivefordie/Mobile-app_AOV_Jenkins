@@ -200,6 +200,42 @@ pipeline {
             }
         }
 
+        stage('Container Scan') {
+            steps {
+                dir('backend') {
+                    script {
+                        def imageTag = env.GIT_COMMIT.take(7)
+                        def imageName = "registry:5000/taskflow-api:${imageTag}"
+
+                        sh """
+                            mkdir -p reports
+
+                            docker run --rm \
+                            --network jenkins \
+                            -v "\$PWD/reports:/reports" \
+                            aquasec/trivy:latest \
+                            image \
+                            --insecure \
+                            --exit-code 1 \
+                            --severity HIGH,CRITICAL \
+                            --format sarif \
+                            --output /reports/trivy-image.sarif \
+                            ${imageName}
+                        """
+                    }
+                }
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: 'backend/reports/trivy-image.sarif',
+                        allowEmptyArchive: true
+                    )
+                }
+            }
+        }
+
         stage('Generate SBOM') {
             steps {
                 dir('backend') {
