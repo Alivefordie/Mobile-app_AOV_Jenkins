@@ -182,17 +182,67 @@ pipeline {
             }
         }
 
+        stage('Resolve Image') {
+            steps {
+                script {
+                    def backendCommit = sh(
+                        script: "git log -1 --format=%H -- backend/",
+                        returnStdout: true
+                    ).trim()
+
+                    env.IMAGE_TAG = backendCommit.take(7)
+                    env.IMAGE_NAME = "registry:5000/taskflow-api:${env.IMAGE_TAG}"
+
+                    echo "Current commit : ${env.GIT_COMMIT.take(7)}"
+                    echo "Backend commit : ${env.IMAGE_TAG}"
+                    echo "Image          : ${env.IMAGE_NAME}"
+                }
+            }
+        }
+
+        stage('Verify Image Exists') {
+            steps {
+                script {
+                    def status = sh(
+                        script: """
+                            curl -s -o /dev/null \
+                            -w "%{http_code}" \
+                            http://registry:5000/v2/taskflow-api/manifests/${env.IMAGE_TAG}
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (status == '200') {
+                        env.NEED_IMAGE_BUILD = 'false'
+                        echo "Image exists: ${env.IMAGE_NAME}"
+                    } else if (status == '404') {
+                        env.NEED_IMAGE_BUILD = 'true'
+                        echo "Image does not exist: ${env.IMAGE_NAME}"
+                        echo "Image will be rebuilt."
+                    } else {
+                        error "Unable to check registry. HTTP status: ${status}"
+                    }
+                }
+            }
+        }
+
         stage('Build Image') {
 
             when {
-                changeset 'backend/**'
+                anyOf {
+                    changeset 'backend/**'
+
+                    expression {
+                        env.NEED_IMAGE_BUILD == 'true'
+                    }
+                }
             }
 
             steps {
                 dir('backend') {
                     script {
-                        def imageTag = env.GIT_COMMIT.take(7)
-                        def imageName = "registry:5000/taskflow-api:${imageTag}"
+                        // def imageTag = env.GIT_COMMIT.take(7)
+                        def imageName = env.IMAGE_NAME
 
                         echo "Building image: ${imageName}"
 
@@ -209,8 +259,8 @@ pipeline {
             steps {
                 dir('backend') {
                     script {
-                        def imageTag = env.GIT_COMMIT.take(7)
-                        def imageName = "registry:5000/taskflow-api:${imageTag}"
+                        // def imageTag = env.GIT_COMMIT.take(7)
+                        def imageName = env.IMAGE_NAME
 
                         sh """
                             mkdir -p reports
@@ -261,8 +311,8 @@ pipeline {
             steps {
                 dir('backend') {
                     script {
-                        def imageTag = env.GIT_COMMIT.take(7)
-                        def imageName = "registry:5000/taskflow-api:${imageTag}"
+                        // def imageTag = env.GIT_COMMIT.take(7)
+                        def imageName = env.IMAGE_NAME
 
                         sh """
                             mkdir -p reports
@@ -486,8 +536,8 @@ pipeline {
             steps {
                     dir('backend') {
                         script {
-                            def imageTag = env.GIT_COMMIT.take(7)
-                            def imageName = "registry:5000/taskflow-api:${imageTag}"
+                            // def imageTag = env.GIT_COMMIT.take(7)
+                            def imageName = env.IMAGE_NAME
 
                             withEnv(["API_IMAGE=${imageName}"]) {
                                 sh '''
@@ -535,10 +585,12 @@ pipeline {
                             allowEmptyArchive: true
                         )
 
-                        sh '''
-                            docker compose logs api || true
-                            docker compose down --remove-orphans || true
-                        '''
+                        withEnv(["API_IMAGE=${env.IMAGE_NAME}"]) {
+                            sh '''
+                                docker compose logs api || true
+                                docker compose down --remove-orphans || true
+                            '''
+                        }
                     }
                 }
             }
