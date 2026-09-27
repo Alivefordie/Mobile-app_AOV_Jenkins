@@ -660,7 +660,32 @@ pipeline {
                         --timeout=120s
                     """
 
-                    echo "${nextColor} is ready. Switching traffic..."
+                    echo "${nextColor} rollout completed."
+
+                    sh """
+                        kubectl port-forward \
+                        deployment/taskflow-${nextColor} \
+                        18080:3000 \
+                        > /tmp/taskflow-port-forward.log 2>&1 &
+
+                        PF_PID=\$!
+
+                        trap 'kill \$PF_PID 2>/dev/null || true' EXIT
+
+                        sleep 3
+
+                        echo "Checking ${nextColor} health..."
+
+                        curl --fail \
+                        --retry 5 \
+                        --retry-delay 2 \
+                        http://127.0.0.1:18080/health
+
+                        kill \$PF_PID 2>/dev/null || true
+                        trap - EXIT
+                    """
+
+                    echo "${nextColor} health check passed. Switching traffic..."
 
                     sh """
                         kubectl set selector service taskflow-api \
