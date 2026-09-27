@@ -647,11 +647,26 @@ pipeline {
                         --timeout=120s
                     """
 
-                    echo "New ${nextColor} deployment is ready."
+                    echo "${nextColor} is ready. Switching traffic..."
+
+                    sh """
+                        kubectl set selector service taskflow-api \
+                        "app=taskflow-api,color=${nextColor}"
+                    """
+
+                    def activeColor = sh(
+                        script: '''
+                            kubectl get service taskflow-api \
+                            -o jsonpath='{.spec.selector.color}'
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Service now points to: ${activeColor}"
                 }
             }
         }
-
+        
         stage('Deploy — Production') {
             when {
                 beforeInput true
