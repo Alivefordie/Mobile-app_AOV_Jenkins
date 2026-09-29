@@ -1,4 +1,5 @@
 pipeline {
+    agent any
     // agent {
     //     label 'linux-agent'
     // }
@@ -186,7 +187,7 @@ pipeline {
             steps {
                 script {
                     def backendCommit = sh(
-                        script: "git log -1 --format=%H -- backend/",
+                        script: 'git log -1 --format=%H -- backend/',
                         returnStdout: true
                     ).trim()
 
@@ -219,7 +220,7 @@ pipeline {
                     } else if (status == '404') {
                         env.NEED_IMAGE_BUILD = 'true'
                         echo "Image does not exist: ${env.IMAGE_NAME}"
-                        echo "Image will be rebuilt."
+                        echo 'Image will be rebuilt.'
                     } else {
                         error "Unable to check registry. HTTP status: ${status}"
                     }
@@ -228,7 +229,6 @@ pipeline {
         }
 
         stage('Build Image') {
-
             when {
                 anyOf {
                     changeset 'backend/**'
@@ -316,7 +316,6 @@ pipeline {
         }
 
         stage('Generate SBOM') {
-
             when {
                 branch 'main'
             }
@@ -343,7 +342,6 @@ pipeline {
         }
 
         stage('Sign SBOM') {
-
             when {
                 branch 'main'
             }
@@ -362,7 +360,7 @@ pipeline {
                     ]) {
                         sh '''
                             docker rm -f cosign-sbom-sign || true
-        
+
                             docker create \
                               --name cosign-sbom-sign \
                               --user 0 \
@@ -373,25 +371,25 @@ pipeline {
                               --key /tmp/cosign.key \
                               --bundle /tmp/taskflow-api.cdx.sigstore.json \
                               /tmp/taskflow-api.cdx.json
-        
+
                             docker cp reports/taskflow-api.cdx.json \
                               cosign-sbom-sign:/tmp/taskflow-api.cdx.json
-        
+
                             docker cp "$COSIGN_KEY_FILE" \
                               cosign-sbom-sign:/tmp/cosign.key
-        
+
                             docker start -a cosign-sbom-sign
-        
+
                             docker cp \
                               cosign-sbom-sign:/tmp/taskflow-api.cdx.sigstore.json \
                               reports/taskflow-api.cdx.sigstore.json
-        
+
                             docker rm cosign-sbom-sign
                         '''
                     }
                 }
             }
-        
+
             post {
                 always {
                     archiveArtifacts(
@@ -401,18 +399,17 @@ pipeline {
                         ''',
                         allowEmptyArchive: true
                     )
-        
+
                     sh 'docker rm -f cosign-sbom-sign || true'
                 }
             }
         }
 
         stage('Verify SBOM Signature') {
-
             when {
                 branch 'main'
             }
-            
+
             steps {
                 dir('backend') {
                     withCredentials([
@@ -564,17 +561,16 @@ pipeline {
                         script {
                             docker.image('mcr.microsoft.com/playwright:v1.63.0-noble')
                                 .inside('--network backend_default') {
-
-                                sh '''
+                                    sh '''
                                     npm ci
 
                                     BASE_URL=http://api:3000 \
                                     npx playwright test
                                 '''
-                            }
+                                }
                         }
                     }
-                }
+            }
 
             post {
                 always {
@@ -607,7 +603,7 @@ pipeline {
                     }
                 }
             }
-        }   
+        }
 
         stage('Kubernetes Connectivity') {
             when {
@@ -715,7 +711,7 @@ pipeline {
                     echo "Service now points to: ${activeColor}"
 
                     if (activeColor != nextColor) {
-                        error "Service switch verification failed."
+                        error 'Service switch verification failed.'
                     }
                 }
             }
@@ -727,7 +723,7 @@ pipeline {
                             env.SERVICE_SWITCHED == 'true' &&
                             env.PREVIOUS_COLOR?.trim()
                         ) {
-                            echo "Deployment failed after traffic switch."
+                            echo 'Deployment failed after traffic switch.'
                             echo "Rolling Service back to: ${env.PREVIOUS_COLOR}"
 
                             def rollbackStatus = sh(
@@ -742,16 +738,16 @@ pipeline {
                             if (rollbackStatus == 0) {
                                 echo "Rollback successful. Service restored to ${env.PREVIOUS_COLOR}."
                             } else {
-                                echo "WARNING: Automatic rollback failed."
+                                echo 'WARNING: Automatic rollback failed.'
                             }
                         } else {
-                            echo "Failure occurred before traffic switch. No Service rollback required."
+                            echo 'Failure occurred before traffic switch. No Service rollback required.'
                         }
                     }
                 }
             }
         }
-        
+
         stage('Deploy — Production') {
             when {
                 beforeInput true
@@ -764,7 +760,6 @@ pipeline {
                 sh 'echo deploying to production--.'
             }
         }
-
     }
 
     post {
