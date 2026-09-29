@@ -192,7 +192,7 @@ pipeline {
                     ).trim()
 
                     env.IMAGE_TAG = backendCommit.take(7)
-                    env.IMAGE_NAME = "registry:5001/taskflow-api:${env.IMAGE_TAG}"
+                    env.IMAGE_NAME = "registry:5000/taskflow-api:${env.IMAGE_TAG}"
 
                     echo "Current commit : ${env.GIT_COMMIT.take(7)}"
                     echo "Backend commit : ${env.IMAGE_TAG}"
@@ -209,7 +209,7 @@ pipeline {
                             curl -s -o /dev/null \
                             -w "%{http_code}" \
                             -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-                            http://registry:5001/v2/taskflow-api/manifests/${env.IMAGE_TAG}
+                            http://registry:5000/v2/taskflow-api/manifests/${env.IMAGE_TAG}
                         """,
                         returnStdout: true
                     ).trim()
