@@ -1,0 +1,11 @@
+---
+- name: Configure Taskflow API host
+  hosts: taskflow
+  become: true
+
+  tasks:
+    - name: Install required packages
+      ansible.builtin.package:
+        name:
+          - curl
+        state: present

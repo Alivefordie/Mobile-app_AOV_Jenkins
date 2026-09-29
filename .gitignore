@@ -30,3 +30,11 @@ Thumbs.db
 
 #backend
 node_modules/
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log

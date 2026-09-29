@@ -516,6 +516,42 @@ pipeline {
             }
         }
 
+        stage('IaC Lint & Validate') {
+            parallel {
+                stage('Terraform Lint & Validate') {
+                    steps {
+                        sh '''
+                    echo "========================================"
+                    echo "Terraform Format Check"
+                    echo "========================================"
+                    terraform -chdir=terraform fmt -check -recursive
+
+                    echo "========================================"
+                    echo "Terraform Init"
+                    echo "========================================"
+                    terraform -chdir=terraform init -backend=false
+
+                    echo "========================================"
+                    echo "Terraform Validate"
+                    echo "========================================"
+                    terraform -chdir=terraform validate
+                    '''
+                    }
+                }
+
+                stage('Ansible Lint') {
+                    steps {
+                        sh '''
+                    echo "========================================"
+                    echo "Ansible Lint"
+                    echo "========================================"
+                    ansible-lint ansible/playbook.yml
+                    '''
+                    }
+                }
+            }
+        }
+
         stage('SonarQube Analysis') {
             steps {
                 dir('backend') {
