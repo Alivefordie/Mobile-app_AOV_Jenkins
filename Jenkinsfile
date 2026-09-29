@@ -593,44 +593,27 @@ pipeline {
 
         stage('Terraform Plan') {
             steps {
-                sh '''
-            echo "========================================"
-            echo "Check AWS Environment"
-            echo "========================================"
+                withCredentials([
+                    string(
+                        credentialsId: 'taskflow-ansible-public-key',
+                    variable: 'TF_VAR_ssh_public_key'
+                        )
+                    ]) {
+                    sh '''
+                            terraform -chdir=terraform init \
+                                -input=false \
+                                -reconfigure
 
-            test -n "$AWS_ACCESS_KEY_ID"
-            test -n "$AWS_SECRET_ACCESS_KEY"
-            test -n "$AWS_DEFAULT_REGION"
+                            terraform -chdir=terraform plan \
+                                -input=false \
+                                -no-color \
+                                -out=tfplan
 
-            echo "AWS_ACCESS_KEY_ID is set"
-            echo "AWS_SECRET_ACCESS_KEY is set"
-            echo "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"
-            echo "AWS_ENDPOINT_URL=$AWS_ENDPOINT_URL"
-            echo "AWS_ENDPOINT_URL_S3=$AWS_ENDPOINT_URL_S3"
-
-            echo "========================================"
-            echo "Terraform Init"
-            echo "========================================"
-
-            terraform -chdir=terraform init -input=false -reconfigure
-
-            echo "========================================"
-            echo "Terraform Plan"
-            echo "========================================"
-
-            terraform -chdir=terraform plan \
-                -input=false \
-                -no-color \
-                -out=tfplan
-
-            echo "========================================"
-            echo "Terraform Plan Summary"
-            echo "========================================"
-
-            terraform -chdir=terraform show \
-                -no-color \
-                tfplan | tee terraform/plan.txt
-        '''
+                            terraform -chdir=terraform show \
+                                -no-color \
+                                tfplan | tee terraform/plan.txt
+                        '''
+                    }
 
                 archiveArtifacts artifacts: 'terraform/tfplan,terraform/plan.txt',
                          fingerprint: true
@@ -669,17 +652,89 @@ Apply this exact Terraform plan?""",
 
         stage('Terraform Apply') {
             steps {
-                sh '''
-            echo "========================================"
-            echo "Terraform Apply - Approved Plan"
-            echo "========================================"
+                withCredentials([
+            string(
+                credentialsId: 'taskflow-ansible-public-key',
+                variable: 'TF_VAR_ssh_public_key'
+            )
+        ]) {
+                    sh '''
+                echo "========================================"
+                echo "Terraform Apply - Approved Plan"
+                echo "========================================"
 
-            test -f terraform/tfplan
+                test -f terraform/tfplan
 
-            terraform -chdir=terraform apply \
-                -input=false \
-                tfplan
-        '''
+                terraform -chdir=terraform apply \
+                    -input=false \
+                    tfplan
+            '''
+        }
+            }
+        }
+
+        stage('Configure with Ansible') {
+            steps {
+                script {
+                    def instanceAddress = sh(
+                script: '''
+                    terraform -chdir=terraform output \
+                        -raw instance_address
+                ''',
+                returnStdout: true
+            ).trim()
+
+                    echo "Terraform instance address: ${instanceAddress}"
+
+                    writeFile(
+                file: 'ansible/inventory.ini',
+                text: """[taskflow]
+${instanceAddress} ansible_user=root
+"""
+            )
+
+                    withCredentials([
+                sshUserPrivateKey(
+                    credentialsId: 'taskflow-ansible-ssh',
+                    keyFileVariable: 'ANSIBLE_SSH_KEY',
+                    usernameVariable: 'ANSIBLE_SSH_USER'
+                )
+            ]) {
+                        withEnv([
+                    "TASKFLOW_IMAGE=${env.IMAGE_NAME}"
+                ]) {
+                            sh '''
+                        echo "========================================"
+                        echo "Dynamic Ansible Inventory"
+                        echo "========================================"
+
+                        cat ansible/inventory.ini
+
+                        echo "========================================"
+                        echo "Wait for SSH"
+                        echo "========================================"
+
+                        ansible \
+                            -i ansible/inventory.ini \
+                            taskflow \
+                            -m ansible.builtin.wait_for_connection \
+                            -a "timeout=60" \
+                            --private-key "$ANSIBLE_SSH_KEY" \
+                            -u "$ANSIBLE_SSH_USER"
+
+                        echo "========================================"
+                        echo "Configure Taskflow Host"
+                        echo "========================================"
+
+                        ansible-playbook \
+                            -i ansible/inventory.ini \
+                            ansible/playbook.yml \
+                            --private-key "$ANSIBLE_SSH_KEY" \
+                            -u "$ANSIBLE_SSH_USER"
+                    '''
+                }
+            }
+                }
             }
         }
 
