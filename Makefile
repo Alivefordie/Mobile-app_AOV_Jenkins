@@ -7,6 +7,10 @@ AGENT_IMAGE ?= jenkins-agent-node2
 AGENT1 ?= linux-agent-1
 AGENT2 ?= linux-agent-2
 
+# Must match the volume mounted at /home/jenkins/agent in jenkins-docker.
+# docker.image(...).inside() needs the agent and daemon to see the same workspace.
+AGENT1_WORK_VOLUME ?= jenkins-agent-work
+
 .PHONY: \
 	kubeconfig \
 	create-kube-volume \
@@ -93,7 +97,7 @@ run-agent-1:
 		--env JENKINS_SECRET=$(AGENT1_SECRET) \
 		--env JENKINS_AGENT_NAME=$(AGENT1) \
 		--volume jenkins-docker-certs:/certs/client:ro \
-		--volume jenkins-agent-work-1:/home/jenkins/agent \
+		--volume $(AGENT1_WORK_VOLUME):/home/jenkins/agent \
 		--volume $(KUBE_VOLUME):/home/jenkins/.kube:ro \
 		$(AGENT_IMAGE)
 
