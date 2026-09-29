@@ -552,6 +552,37 @@ pipeline {
             }
         }
 
+        stage('IaC Security Scan') {
+            parallel {
+                stage('tfsec') {
+                    steps {
+                        sh '''
+                    echo "========================================"
+                    echo "Terraform Security Scan - tfsec"
+                    echo "========================================"
+
+                    tfsec terraform \
+                        --no-color
+                '''
+                    }
+                }
+
+                stage('Checkov') {
+                    steps {
+                        sh '''
+                    echo "========================================"
+                    echo "Terraform Security Scan - Checkov"
+                    echo "========================================"
+
+                    checkov \
+                        --directory terraform \
+                        --framework terraform
+                '''
+                    }
+                }
+            }
+        }
+
         stage('SonarQube Analysis') {
             steps {
                 dir('backend') {

@@ -3,14 +3,15 @@ resource "aws_security_group" "taskflow_api" {
   description = "Allow Taskflow API traffic on port 8080"
 
   ingress {
-    description = "Allow HTTP traffic to Taskflow API"
+    description = "Allow Taskflow API traffic from Jenkins network"
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.allowed_cidr]
   }
 
   egress {
+    description = "Allow outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -28,6 +29,15 @@ resource "aws_instance" "taskflow_api" {
   vpc_security_group_ids = [
     aws_security_group.taskflow_api.id
   ]
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
+  root_block_device {
+    encrypted = true
+  }
 
   tags = {
     Name = "taskflow-api"
