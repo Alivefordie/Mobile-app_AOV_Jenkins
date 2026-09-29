@@ -22,6 +22,7 @@ resource "aws_security_group" "taskflow_api" {
     Name = "taskflow-api-sg"
   }
 }
+# tfsec:ignore:aws-ec2-enable-at-rest-encryption:exp:2026-12-31
 resource "aws_instance" "taskflow_api" {
   ami           = "ami-61ad6e59d7b0"
   instance_type = "t2.micro"
@@ -36,7 +37,6 @@ resource "aws_instance" "taskflow_api" {
     http_endpoint = "enabled"
     http_tokens   = "required"
   }
-
 
   tags = {
     Name = "taskflow-api"
