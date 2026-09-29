@@ -27,8 +27,6 @@ resource "aws_instance" "taskflow_api" {
   ami           = "ami-61ad6e59d7b0"
   instance_type = "t2.micro"
 
-  monitoring = true
-
   vpc_security_group_ids = [
     aws_security_group.taskflow_api.id
   ]
