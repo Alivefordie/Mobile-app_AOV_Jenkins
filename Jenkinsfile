@@ -9,6 +9,13 @@ pipeline {
     environment {
         APP_NAME = 'taskflow-api'
         NODE_ENV = 'test'
+
+        AWS_ACCESS_KEY_ID     = 'test'
+        AWS_SECRET_ACCESS_KEY = 'test'
+        AWS_DEFAULT_REGION    = 'us-east-1'
+
+        AWS_ENDPOINT_URL    = 'http://localstack:4566'
+        AWS_ENDPOINT_URL_S3 = 'http://localstack:4566'
     }
 
     options {
