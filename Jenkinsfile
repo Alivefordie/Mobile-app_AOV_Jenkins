@@ -595,6 +595,20 @@ pipeline {
             steps {
                 sh '''
             echo "========================================"
+            echo "Check AWS Environment"
+            echo "========================================"
+
+            test -n "$AWS_ACCESS_KEY_ID"
+            test -n "$AWS_SECRET_ACCESS_KEY"
+            test -n "$AWS_DEFAULT_REGION"
+
+            echo "AWS_ACCESS_KEY_ID is set"
+            echo "AWS_SECRET_ACCESS_KEY is set"
+            echo "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"
+            echo "AWS_ENDPOINT_URL=$AWS_ENDPOINT_URL"
+            echo "AWS_ENDPOINT_URL_S3=$AWS_ENDPOINT_URL_S3"
+
+            echo "========================================"
             echo "Terraform Init"
             echo "========================================"
 
