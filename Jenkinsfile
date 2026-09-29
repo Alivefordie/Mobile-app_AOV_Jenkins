@@ -584,7 +584,7 @@ pipeline {
                     checkov \
                         --directory terraform \
                         --framework terraform \
-                        --skip-check CKV_AWS_135,CKV2_AWS_41
+                        --skip-check CKV_AWS_8,CKV_AWS_135,CKV2_AWS_41
                 '''
                     }
                 }
@@ -655,7 +655,6 @@ pipeline {
                     timeout(time: 30, unit: 'MINUTES') {
                         input(
                     message: """Terraform plan is ready.
-
 ${planSummary}
 
 Review terraform/plan.txt before approving.

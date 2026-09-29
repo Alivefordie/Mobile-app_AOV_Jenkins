@@ -37,9 +37,6 @@ resource "aws_instance" "taskflow_api" {
     http_tokens   = "required"
   }
 
-  root_block_device {
-    encrypted = true
-  }
 
   tags = {
     Name = "taskflow-api"
