@@ -584,6 +584,85 @@ pipeline {
             }
         }
 
+        stage('Terraform Plan') {
+            steps {
+                sh '''
+            echo "========================================"
+            echo "Terraform Init"
+            echo "========================================"
+
+            terraform -chdir=terraform init -input=false -reconfigure
+
+            echo "========================================"
+            echo "Terraform Plan"
+            echo "========================================"
+
+            terraform -chdir=terraform plan \
+                -input=false \
+                -no-color \
+                -out=tfplan
+
+            echo "========================================"
+            echo "Terraform Plan Summary"
+            echo "========================================"
+
+            terraform -chdir=terraform show \
+                -no-color \
+                tfplan | tee terraform/plan.txt
+        '''
+
+                archiveArtifacts artifacts: 'terraform/tfplan,terraform/plan.txt',
+                         fingerprint: true
+            }
+        }
+
+        stage('Approval') {
+            steps {
+                script {
+                    def planSummary = sh(
+                script: '''
+                    grep -E '^Plan:|^No changes\\.' terraform/plan.txt \
+                    | tail -1
+                ''',
+                returnStdout: true
+            ).trim()
+
+                    if (!planSummary) {
+                        planSummary = 'Plan generated. Review terraform/plan.txt artifact for full details.'
+                    }
+
+                    timeout(time: 30, unit: 'MINUTES') {
+                        input(
+                    message: """Terraform plan is ready.
+
+${planSummary}
+
+Review terraform/plan.txt before approving.
+
+Apply this exact Terraform plan?""",
+                    ok: 'Approve Apply'
+                )
+                    }
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                sh '''
+            echo "========================================"
+            echo "Terraform Apply - Approved Plan"
+            echo "========================================"
+
+            test -f terraform/tfplan
+
+            terraform -chdir=terraform apply \
+                -input=false \
+                tfplan
+        '''
+            }
+        }
+
         stage('SonarQube Analysis') {
             steps {
                 dir('backend') {
