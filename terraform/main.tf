@@ -11,11 +11,11 @@ resource "aws_security_group" "taskflow_api" {
   }
 
   egress {
-    description = "Allow outbound traffic"
+    description = "Allow outbound traffic to Jenkins network"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.allowed_cidr]
   }
 
   tags = {
@@ -25,6 +25,8 @@ resource "aws_security_group" "taskflow_api" {
 resource "aws_instance" "taskflow_api" {
   ami           = "ami-61ad6e59d7b0"
   instance_type = "t2.micro"
+
+  monitoring = true
 
   vpc_security_group_ids = [
     aws_security_group.taskflow_api.id

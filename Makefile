@@ -80,11 +80,6 @@ remove-agent:
 	-docker rm -f $(AGENT1)
 	-docker rm -f $(AGENT2)
 
-
-# ==================================================
-# Agent 1
-# ==================================================
-
 run-agent-1:
 	docker run \
 		--name $(AGENT1) \
@@ -94,18 +89,13 @@ run-agent-1:
 		--env DOCKER_HOST=tcp://docker:2376 \
 		--env DOCKER_CERT_PATH=/certs/client \
 		--env DOCKER_TLS_VERIFY=1 \
+		--env JENKINS_URL=http://jenkins-blueocean:8080 \
+		--env JENKINS_SECRET=$(AGENT1_SECRET) \
+		--env JENKINS_AGENT_NAME=$(AGENT1) \
 		--volume jenkins-docker-certs:/certs/client:ro \
 		--volume jenkins-agent-work-1:/home/jenkins/agent \
 		--volume $(KUBE_VOLUME):/home/jenkins/.kube:ro \
-		$(AGENT_IMAGE) \
-		-url http://jenkins-blueocean:8080 \
-		$(AGENT1_SECRET) \
-		$(AGENT1)
-
-
-# ==================================================
-# Agent 2
-# ==================================================
+		$(AGENT_IMAGE)
 
 run-agent-2:
 	docker run \
@@ -116,14 +106,13 @@ run-agent-2:
 		--env DOCKER_HOST=tcp://docker:2376 \
 		--env DOCKER_CERT_PATH=/certs/client \
 		--env DOCKER_TLS_VERIFY=1 \
+		--env JENKINS_URL=http://jenkins-blueocean:8080 \
+		--env JENKINS_SECRET=$(AGENT2_SECRET) \
+		--env JENKINS_AGENT_NAME=$(AGENT2) \
 		--volume jenkins-docker-certs:/certs/client:ro \
 		--volume jenkins-agent-work-2:/home/jenkins/agent \
 		--volume $(KUBE_VOLUME):/home/jenkins/.kube:ro \
-		$(AGENT_IMAGE) \
-		-url http://jenkins-blueocean:8080 \
-		$(AGENT2_SECRET) \
-		$(AGENT2)
-
+		$(AGENT_IMAGE)
 
 # ==================================================
 # Recreate Agents

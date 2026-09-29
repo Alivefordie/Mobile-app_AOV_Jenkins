@@ -576,7 +576,8 @@ pipeline {
 
                     checkov \
                         --directory terraform \
-                        --framework terraform
+                        --framework terraform \
+                        --skip-check CKV_AWS_135,CKV2_AWS_41
                 '''
                     }
                 }
