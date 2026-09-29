@@ -629,7 +629,9 @@ pipeline {
             when {
                 branch 'develop'
             }
-
+            environment {
+                FORCE_POST_SWITCH_FAILURE = 'false'
+            }
             steps {
                 script {
                     def currentColor = sh(
@@ -699,7 +701,33 @@ pipeline {
 
                     // ตั้งหลัง switch สำเร็จเท่านั้น
                     env.SERVICE_SWITCHED = 'true'
+                    sh """
+                        echo "Running post-switch smoke test through Service..."
 
+                        kubectl port-forward \
+                        service/taskflow-api \
+                        18081:3000 \
+                        > /tmp/taskflow-service-port-forward.log 2>&1 &
+
+                        PF_PID=\$!
+                        trap 'kill \$PF_PID 2>/dev/null || true' EXIT
+
+                        sleep 3
+
+                        curl --fail \
+                        --retry 5 \
+                        --retry-delay 2 \
+                        http://127.0.0.1:18081/health
+
+                        kill \$PF_PID 2>/dev/null || true
+                        trap - EXIT
+                    """
+
+                    echo 'Post-switch smoke test passed.'
+
+                    if (env.FORCE_POST_SWITCH_FAILURE == 'true') {
+                        error 'Injected failure after Service switch for rollback demonstration.'
+                    }
                     def activeColor = sh(
                         script: '''
                             kubectl get service taskflow-api \
@@ -736,8 +764,20 @@ pipeline {
                             )
 
                             if (rollbackStatus == 0) {
-                                echo "Rollback successful. Service restored to ${env.PREVIOUS_COLOR}."
+                                def rollbackColor = sh(
+                                script: '''
+                                    kubectl get service taskflow-api \
+                                    -o jsonpath='{.spec.selector.color}'
+                                ''',
+                                returnStdout: true
+                            ).trim()
+
+                                if (rollbackColor == env.PREVIOUS_COLOR) {
+                                    echo "Rollback successful. Service restored to ${rollbackColor}."
                             } else {
+                                    echo "WARNING: Rollback command succeeded but Service points to ${rollbackColor}."
+                                }
+                        } else {
                                 echo 'WARNING: Automatic rollback failed.'
                             }
                         } else {
