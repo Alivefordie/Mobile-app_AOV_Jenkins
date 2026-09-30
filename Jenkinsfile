@@ -693,9 +693,9 @@ Apply this exact Terraform plan?""",
                     writeFile(
                 file: 'ansible/inventory.ini',
                 text: """[taskflow]
-${instanceAddress}
-"""
-            )
+                    ${instanceAddress}
+                    """
+                     )
 
                     withCredentials([
                 sshUserPrivateKey(
@@ -706,20 +706,37 @@ ${instanceAddress}
             ]) {
                         withEnv([
                     "TASKFLOW_IMAGE=${env.IMAGE_NAME}",
+                    "INSTANCE_ADDRESS=${instanceAddress}",
                     'ANSIBLE_HOST_KEY_CHECKING=False'
                 ]) {
                             sh '''
                         echo "========================================"
-                        echo "Dynamic Ansible Inventory"
+                        echo "Validate Jenkins SSH Key"
                         echo "========================================"
 
-                        cat ansible/inventory.ini
+                        ssh-keygen -y \
+                            -f "$ANSIBLE_SSH_KEY" \
+                            > /tmp/jenkins-ansible.pub
+
+                        echo "Jenkins public key:"
+                        cat /tmp/jenkins-ansible.pub
+
+                        echo
+                        echo "Jenkins key fingerprint:"
+                        ssh-keygen -lf /tmp/jenkins-ansible.pub
 
                         echo "========================================"
-                        echo "Image from Lab 07"
+                        echo "Direct SSH Test"
                         echo "========================================"
 
-                        echo "$TASKFLOW_IMAGE"
+                        ssh \
+                            -vv \
+                            -o StrictHostKeyChecking=no \
+                            -o UserKnownHostsFile=/dev/null \
+                            -o ConnectTimeout=10 \
+                            -i "$ANSIBLE_SSH_KEY" \
+                            "$ANSIBLE_SSH_USER@$INSTANCE_ADDRESS" \
+                            "echo SSH_OK"
 
                         echo "========================================"
                         echo "Wait for provisioned host"
