@@ -35,6 +35,8 @@ spec:
 
     options {
         timeout(time: 20, unit: 'MINUTES')
+
+        parallelsAlwaysFailFast()
     }
 
     stages {
@@ -48,10 +50,13 @@ spec:
                     def isFeatureBranch =
                         env.BRANCH_NAME ==~ /^feature\/.+/
 
+                    def isCapstoneBranch =
+                        env.BRANCH_NAME == 'feature/lab10-capstone'
+
                     def isPullRequest =
                         env.CHANGE_ID?.trim()
 
-                    if (isFeatureBranch && !isPullRequest) {
+                    if (isFeatureBranch && !isPullRequest && !isCapstoneBranch) {
                         env.CI_MODE = 'FAST'
                     } else {
                         env.CI_MODE = 'FULL'
