@@ -19,17 +19,23 @@
           - npm
         state: present
 
-    - name: Install Docker
+    - name: Install Docker CLI
       ansible.builtin.apt:
         name:
           - docker.io
         state: present
 
-    - name: Ensure Docker service is enabled and running
-      ansible.builtin.service:
-        name: docker
-        state: started
-        enabled: true
+    - name: Verify Docker socket exists
+      ansible.builtin.stat:
+        path: /var/run/docker.sock
+      register: docker_socket
+
+    - name: Fail if Docker socket is unavailable
+      ansible.builtin.fail:
+        msg: >-
+          /var/run/docker.sock is unavailable on the provisioned host.
+          LocalStack Docker-backed EC2 instances must have a Docker socket mounted.
+      when: not docker_socket.stat.exists
 
     - name: Verify Node.js installation
       ansible.builtin.command:
@@ -41,15 +47,15 @@
       ansible.builtin.debug:
         msg: "Node.js version: {{ node_version.stdout }}"
 
-    - name: Verify Docker installation
+    - name: Verify Docker connection
       ansible.builtin.command:
-        cmd: docker --version
+        cmd: docker version
       register: docker_version
       changed_when: false
 
     - name: Show Docker version
       ansible.builtin.debug:
-        msg: "Docker version: {{ docker_version.stdout }}"
+        var: docker_version.stdout_lines
 
     - name: Pull Taskflow API image from Lab 07 registry
       ansible.builtin.command:
