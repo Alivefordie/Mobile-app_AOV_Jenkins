@@ -684,12 +684,16 @@ Apply this exact Terraform plan?""",
                 returnStdout: true
             ).trim()
 
-                    echo "Terraform instance address: ${instanceAddress}"
+                    if (!instanceAddress) {
+                        error 'Terraform did not return instance_address.'
+                    }
+
+                    echo "Provisioned host: ${instanceAddress}"
 
                     writeFile(
                 file: 'ansible/inventory.ini',
                 text: """[taskflow]
-${instanceAddress} ansible_user=root
+${instanceAddress}
 """
             )
 
@@ -701,7 +705,8 @@ ${instanceAddress} ansible_user=root
                 )
             ]) {
                         withEnv([
-                    "TASKFLOW_IMAGE=${env.IMAGE_NAME}"
+                    "TASKFLOW_IMAGE=${env.IMAGE_NAME}",
+                    'ANSIBLE_HOST_KEY_CHECKING=False'
                 ]) {
                             sh '''
                         echo "========================================"
@@ -711,7 +716,13 @@ ${instanceAddress} ansible_user=root
                         cat ansible/inventory.ini
 
                         echo "========================================"
-                        echo "Wait for SSH"
+                        echo "Image from Lab 07"
+                        echo "========================================"
+
+                        echo "$TASKFLOW_IMAGE"
+
+                        echo "========================================"
+                        echo "Wait for provisioned host"
                         echo "========================================"
 
                         ansible \
@@ -723,7 +734,7 @@ ${instanceAddress} ansible_user=root
                             -u "$ANSIBLE_SSH_USER"
 
                         echo "========================================"
-                        echo "Configure Taskflow Host"
+                        echo "Configure with Ansible"
                         echo "========================================"
 
                         ansible-playbook \

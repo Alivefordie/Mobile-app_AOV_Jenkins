@@ -1,16 +1,28 @@
 services:
   localstack:
-    image: localstack/localstack:4.9.2
+    image: localstack/localstack-pro:2026.8.4
     container_name: localstack
+
     ports:
       - "4566:4566"
+
     environment:
-      - DEBUG=0
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
       - AWS_DEFAULT_REGION=us-east-1
-      - SERVICES=s3,ec2
+      # IMPORTANT
+      - EC2_VM_MANAGER=docker
+      - EC2_DOWNLOAD_DEFAULT_IMAGES=1
+
     volumes:
       - localstack-data:/var/lib/localstack
       - /var/run/docker.sock:/var/run/docker.sock
 
+    networks:
+      - jenkins
+
 volumes:
   localstack-data:
+
+networks:
+  jenkins:
+    external: true

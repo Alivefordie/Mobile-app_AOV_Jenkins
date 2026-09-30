@@ -12,42 +12,49 @@
         update_cache: true
         cache_valid_time: 3600
 
-    - name: Install Node.js and Docker
+    - name: Install Node.js and npm
       ansible.builtin.apt:
         name:
           - nodejs
           - npm
+        state: present
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
           - docker.io
         state: present
 
-    - name: Ensure Docker service is started
+    - name: Ensure Docker service is enabled and running
       ansible.builtin.service:
         name: docker
         state: started
         enabled: true
 
-    - name: Show Node.js version
+    - name: Verify Node.js installation
       ansible.builtin.command:
         cmd: node --version
       register: node_version
       changed_when: false
 
-    - name: Display Node.js version
+    - name: Show Node.js version
       ansible.builtin.debug:
         msg: "Node.js version: {{ node_version.stdout }}"
 
-    - name: Show Docker version
+    - name: Verify Docker installation
       ansible.builtin.command:
         cmd: docker --version
       register: docker_version
       changed_when: false
 
-    - name: Display Docker version
+    - name: Show Docker version
       ansible.builtin.debug:
         msg: "Docker version: {{ docker_version.stdout }}"
 
-    - name: Pull Taskflow API image
+    - name: Pull Taskflow API image from Lab 07 registry
       ansible.builtin.command:
         cmd: "docker pull {{ taskflow_image }}"
-      register: docker_pull
-      changed_when: "'Downloaded newer image' in docker_pull.stdout"
+      register: pull_result
+      changed_when: >
+        'Downloaded newer image' in pull_result.stdout
+        or 'Pull complete' in pull_result.stdout
