@@ -19,9 +19,9 @@ pipeline {
             defaultContainer 'node'
         }
     }
-    // tools {
-    //     nodejs 'node26'
-    // }
+    tools {
+        nodejs 'node26'
+    }
 
     environment {
         APP_NAME = 'taskflow-api'
