@@ -15,12 +15,6 @@ pipeline {
 
         AWS_ENDPOINT_URL    = 'http://localstack:4566'
         AWS_ENDPOINT_URL_S3 = 'http://localstack:4566'
-
-        /*
-         * FAST = direct push บน feature/*
-         * FULL = develop, main, PR และ branch อื่น ๆ
-         */
-        CI_MODE = 'FULL'
     }
 
     options {
@@ -41,17 +35,6 @@ pipeline {
                     def isPullRequest =
                         env.CHANGE_ID?.trim()
 
-                    /*
-                     * Direct feature branch build:
-                     *
-                     * feature/foo
-                     *   → FAST
-                     *
-                     * PR build:
-                     *
-                     * PR-123 -> develop
-                     *   → FULL
-                     */
                     if (isFeatureBranch && !isPullRequest) {
                         env.CI_MODE = 'FAST'
                     } else {
@@ -62,12 +45,13 @@ pipeline {
                     ========================================
                     Pipeline Environment
                     ========================================
-                    APP_NAME     : ${env.APP_NAME}
-                    NODE_ENV     : ${env.NODE_ENV}
-                    BRANCH_NAME  : ${env.BRANCH_NAME}
-                    CHANGE_ID    : ${env.CHANGE_ID ?: '-'}
-                    CHANGE_TARGET: ${env.CHANGE_TARGET ?: '-'}
-                    CI_MODE      : ${env.CI_MODE}
+                    APP_NAME      : ${env.APP_NAME}
+                    NODE_ENV      : ${env.NODE_ENV}
+                    BRANCH_NAME   : ${env.BRANCH_NAME}
+                    CHANGE_ID     : ${env.CHANGE_ID ?: '-'}
+                    CHANGE_BRANCH : ${env.CHANGE_BRANCH ?: '-'}
+                    CHANGE_TARGET : ${env.CHANGE_TARGET ?: '-'}
+                    CI_MODE       : ${env.CI_MODE}
                     ========================================
                     """.stripIndent()
                 }
