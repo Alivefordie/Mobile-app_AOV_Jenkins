@@ -3,19 +3,17 @@ pipeline {
 
     agent {
         kubernetes {
-            label 'k8s-node'
-
             yaml '''
-            apiVersion: v1
-            kind: Pod
-            spec:
-            containers:
-                - name: node
-                image: node:20-alpine
-                command:
-                    - cat
-                tty: true
-            '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: node
+      image: node:20-alpine
+      command:
+        - cat
+      tty: true
+'''
             defaultContainer 'node'
         }
     }
