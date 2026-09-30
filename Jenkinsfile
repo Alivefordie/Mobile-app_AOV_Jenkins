@@ -6,15 +6,86 @@ pipeline {
             yaml '''
 apiVersion: v1
 kind: Pod
+
 spec:
+
+  volumes:
+
+    - name: jenkins-workspace
+      emptyDir: {}
+
   containers:
-    - name: node
-      image: node:20-alpine
+
+    # =====================================================
+    # Jenkins CI Agent
+    # =====================================================
+
+    - name: ci
+      image: jenkins-ci-agent:lab10
+
+      imagePullPolicy: IfNotPresent
+
       command:
         - cat
+
       tty: true
+
+      env:
+
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+
+      volumeMounts:
+
+        - name: jenkins-workspace
+          mountPath: /home/jenkins/agent
+
+    # =====================================================
+    # Docker daemon
+    # =====================================================
+
+    - name: dind
+      image: docker:28-dind
+
+      imagePullPolicy: IfNotPresent
+
+      securityContext:
+        privileged: true
+
+      env:
+
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+
+      args:
+
+        - --host=tcp://0.0.0.0:2375
+
+        - --host=unix:///var/run/docker.sock
+
+      volumeMounts:
+
+        - name: jenkins-workspace
+          mountPath: /home/jenkins/agent
+
+      readinessProbe:
+
+        exec:
+
+          command:
+            - docker
+            - info
+
+        initialDelaySeconds: 3
+        periodSeconds: 2
+        timeoutSeconds: 2
+        failureThreshold: 30
 '''
-            defaultContainer 'node'
+
+            defaultContainer 'ci'
         }
     }
     // tools {
@@ -98,26 +169,73 @@ spec:
                     echo "Kubernetes Dynamic Jenkins Agent"
                     echo "========================================"
 
+                    echo
                     echo "Hostname:"
                     hostname
 
-                    echo ""
+                    echo
+                    echo "===== Runtime ====="
 
-                    echo "Node:"
+                    java -version
                     node --version
-
-                    echo ""
-
-                    echo "NPM:"
                     npm --version
 
-                    echo ""
+                    echo
+                    echo "===== Docker ====="
 
-                    echo "Pod environment:"
-                    printenv | sort | grep -E \
-                        'JENKINS|NODE_NAME|WORKSPACE|HOSTNAME' \
-                        || true
+                    docker --version
+                    docker compose version
+                    docker buildx version
 
+                    echo
+                    echo "Waiting for Docker daemon..."
+
+                    i=0
+
+                    until docker info >/dev/null 2>&1
+                    do
+                        i=$((i + 1))
+
+                        if [ "$i" -ge 30 ]; then
+                            echo "Docker daemon did not become ready."
+                            exit 1
+                        fi
+
+                        sleep 2
+                    done
+
+                    docker info
+
+                    echo
+                    echo "===== Infrastructure ====="
+
+                    terraform version
+                    ansible --version
+                    ansible-lint --version
+
+                    echo
+                    echo "===== Kubernetes ====="
+
+                    kubectl version --client
+                    helm version
+                    kind version
+
+                    echo
+                    echo "===== Security ====="
+
+                    tfsec --version
+                    checkov --version
+
+                    echo
+                    echo "===== Utilities ====="
+
+                    yq --version
+                    git --version
+                    curl --version
+
+                    echo
+                    echo "========================================"
+                    echo "CI agent ready"
                     echo "========================================"
                 '''
             }
@@ -176,160 +294,209 @@ spec:
         }
 
         // =========================================================
-        // FULL CI - SAST
+        // Parallel Quality & Security Gates
+        // Lab 10:
+        // Independent verification work runs concurrently.
+        // A failure aborts the remaining parallel branches.
         // =========================================================
 
-        stage('SAST - ESLint Security') {
+        stage('Quality & Security Gates') {
             when {
                 expression {
                     env.CI_MODE == 'FULL'
                 }
             }
 
-            steps {
-                dir('backend') {
-                    sh '''
-                        mkdir -p reports
+            failFast true
 
-                        npx eslint \
-                            --plugin security \
-                            src/ \
-                            --rule 'prettier/prettier: off' \
-                            -f @microsoft/eslint-formatter-sarif \
-                            -o reports/eslint.sarif
+            parallel {
+                // =================================================
+                // Lint
+                // =================================================
 
-                        npx eslint \
-                            --plugin security \
-                            src/ \
-                            --rule 'prettier/prettier: off'
-                    '''
-                }
-            }
-
-            post {
-                always {
-                    archiveArtifacts(
-                        artifacts: 'backend/reports/eslint.sarif',
-                        allowEmptyArchive: true
-                    )
-                }
-            }
-        }
-
-        stage('SAST - Semgrep') {
-            when {
-                expression {
-                    env.CI_MODE == 'FULL'
-                }
-            }
-
-            steps {
-                dir('backend') {
-                    sh '''
-                        mkdir -p reports
-
-                        docker run --rm \
-                            -v "$PWD:/src" \
-                            -w /src \
-                            semgrep/semgrep:latest \
-                            semgrep scan \
-                            --config=p/owasp-top-ten \
-                            --config=p/nodejs \
-                            --sarif \
-                            --output=reports/semgrep.sarif \
-                            .
-                    '''
-                }
-            }
-
-            post {
-                always {
-                    archiveArtifacts(
-                        artifacts: 'backend/reports/semgrep.sarif',
-                        allowEmptyArchive: true
-                    )
-                }
-            }
-        }
-
-        // =========================================================
-        // FULL CI - SCA
-        // =========================================================
-
-        stage('SCA - npm audit') {
-            when {
-                expression {
-                    env.CI_MODE == 'FULL'
-                }
-            }
-
-            steps {
-                dir('backend') {
-                    script {
-                        sh '''
-                            mkdir -p reports
-
-                            npm audit \
-                                --audit-level=high \
-                                --json \
-                                > reports/npm-audit.json || true
-                        '''
-
-                        def audit =
-                            readJSON file: 'reports/npm-audit.json'
-
-                        def vulnerabilities =
-                            audit.metadata?.vulnerabilities ?: [:]
-
-                        int critical =
-                            (vulnerabilities.critical ?: 0) as int
-
-                        int high =
-                            (vulnerabilities.high ?: 0) as int
-
-                        int moderate =
-                            (vulnerabilities.moderate ?: 0) as int
-
-                        int low =
-                            (vulnerabilities.low ?: 0) as int
-
-                        echo """
-                        npm audit summary:
-
-                        Critical: ${critical}
-                        High:     ${high}
-                        Moderate: ${moderate}
-                        Low:      ${low}
-                        """.stripIndent()
-
-                        if (critical > 0) {
-                            echo """
-                            SCA detected ${critical} critical vulnerabilities.
-                            Final enforcement will be handled by OPA.
-                            """.stripIndent()
-                        }
-                        else if (
-                            high > 0 ||
-                            moderate > 0 ||
-                            low > 0
-                        ) {
-                            unstable(
-                                'SCA warning: vulnerabilities found, but no critical vulnerabilities.'
-                            )
-                        }
-                        else {
-                            echo 'SCA passed: no vulnerabilities found.'
+                stage('Lint') {
+                    steps {
+                        dir('backend') {
+                            sh 'npm run lint'
                         }
                     }
                 }
-            }
 
-            post {
-                always {
-                    archiveArtifacts(
-                        artifacts: 'backend/reports/npm-audit.json',
-                        allowEmptyArchive: true
-                    )
+                // =================================================
+                // Unit Test
+                // =================================================
+
+                stage('Unit Test + Coverage') {
+                    steps {
+                        dir('backend') {
+                            sh '''
+                                npm test -- \
+                                    --coverage \
+                                    --reporters=jest-junit
+                            '''
+                        }
+                    }
+
+                    post {
+                        always {
+                            dir('backend') {
+                                junit(
+                                    allowEmptyResults: true,
+                                    testResults: 'reports/junit.xml'
+                                )
+
+                                recordCoverage(
+                                    tools: [[
+                                        parser: 'COBERTURA',
+                                        pattern: 'coverage/cobertura-coverage.xml'
+                                    ]]
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // =================================================
+                // SAST
+                // =================================================
+
+                stage('SAST') {
+                    stages {
+                        stage('ESLint Security') {
+                            steps {
+                                dir('backend') {
+                                    sh '''
+                                        mkdir -p reports
+
+                                        npx eslint \
+                                            --plugin security \
+                                            src/ \
+                                            --rule 'prettier/prettier: off' \
+                                            -f @microsoft/eslint-formatter-sarif \
+                                            -o reports/eslint.sarif
+
+                                        npx eslint \
+                                            --plugin security \
+                                            src/ \
+                                            --rule 'prettier/prettier: off'
+                                    '''
+                                }
+                            }
+
+                            post {
+                                always {
+                                    archiveArtifacts(
+                                        artifacts: 'backend/reports/eslint.sarif',
+                                        allowEmptyArchive: true
+                                    )
+                                }
+                            }
+                        }
+
+                        stage('Semgrep') {
+                            steps {
+                                dir('backend') {
+                                    sh '''
+                                        mkdir -p reports
+
+                                        docker run --rm \
+                                            -v "$PWD:/src" \
+                                            -w /src \
+                                            semgrep/semgrep:latest \
+                                            semgrep scan \
+                                            --config=p/owasp-top-ten \
+                                            --config=p/nodejs \
+                                            --sarif \
+                                            --output=reports/semgrep.sarif \
+                                            .
+                                    '''
+                                }
+                            }
+
+                            post {
+                                always {
+                                    archiveArtifacts(
+                                        artifacts: 'backend/reports/semgrep.sarif',
+                                        allowEmptyArchive: true
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // =================================================
+                // SCA
+                // =================================================
+
+                stage('SCA - npm audit') {
+                    steps {
+                        dir('backend') {
+                            script {
+                                sh '''
+                                    mkdir -p reports
+
+                                    npm audit \
+                                        --audit-level=high \
+                                        --json \
+                                        > reports/npm-audit.json || true
+                                '''
+
+                                def audit =
+                                    readJSON file: 'reports/npm-audit.json'
+
+                                def vulnerabilities =
+                                    audit.metadata?.vulnerabilities ?: [:]
+
+                                int critical =
+                                    (vulnerabilities.critical ?: 0) as int
+
+                                int high =
+                                    (vulnerabilities.high ?: 0) as int
+
+                                int moderate =
+                                    (vulnerabilities.moderate ?: 0) as int
+
+                                int low =
+                                    (vulnerabilities.low ?: 0) as int
+
+                                echo """
+                                npm audit summary:
+
+                                Critical: ${critical}
+                                High:     ${high}
+                                Moderate: ${moderate}
+                                Low:      ${low}
+                                """.stripIndent()
+
+                                if (critical > 0) {
+                                    echo """
+                                    SCA detected ${critical} critical vulnerabilities.
+                                    Final enforcement will be handled by OPA.
+                                    """.stripIndent()
+                                } else if (
+                                    high > 0 ||
+                                    moderate > 0 ||
+                                    low > 0
+                                ) {
+                                    unstable(
+                                        'SCA warning: vulnerabilities found, but no critical vulnerabilities.'
+                                    )
+                                } else {
+                                    echo 'SCA passed: no vulnerabilities found.'
+                                }
+                            }
+                        }
+                    }
+
+                    post {
+                        always {
+                            archiveArtifacts(
+                                artifacts: 'backend/reports/npm-audit.json',
+                                allowEmptyArchive: true
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -704,14 +871,6 @@ spec:
         // Runs on FAST and FULL
         // =========================================================
 
-        stage('Lint') {
-            steps {
-                dir('backend') {
-                    sh 'npm run lint'
-                }
-            }
-        }
-
         // =========================================================
         // FEATURE BRANCH FAST TEST
         // =========================================================
@@ -733,46 +892,6 @@ spec:
                     '''
 
                     sh 'npm test -- --runInBand'
-                }
-            }
-        }
-
-        // =========================================================
-        // FULL UNIT TEST
-        // =========================================================
-
-        stage('Unit Test + Coverage') {
-            when {
-                expression {
-                    env.CI_MODE == 'FULL'
-                }
-            }
-
-            steps {
-                dir('backend') {
-                    sh '''
-                        npm test -- \
-                            --coverage \
-                            --reporters=jest-junit
-                    '''
-                }
-            }
-
-            post {
-                always {
-                    dir('backend') {
-                        junit(
-                            allowEmptyResults: true,
-                            testResults: 'reports/junit.xml'
-                        )
-
-                        recordCoverage(
-                            tools: [[
-                                parser: 'COBERTURA',
-                                pattern: 'coverage/cobertura-coverage.xml'
-                            ]]
-                        )
-                    }
                 }
             }
         }
