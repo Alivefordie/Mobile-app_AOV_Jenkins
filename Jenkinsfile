@@ -638,11 +638,11 @@ pipeline {
                     timeout(time: 30, unit: 'MINUTES') {
                         input(
                     message: """Terraform plan is ready.
-${planSummary}
+                            ${planSummary}
 
-Review terraform/plan.txt before approving.
+                            Review terraform/plan.txt before approving.
 
-Apply this exact Terraform plan?""",
+                            Apply this exact Terraform plan?""",
                     ok: 'Approve Apply'
                 )
                     }
@@ -1048,6 +1048,80 @@ Apply this exact Terraform plan?""",
             }
             steps {
                 sh 'echo deploying to production--.'
+            }
+        }
+
+        stage('Destroy Approval') {
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    input(
+                message: '''
+                    End of lab session.
+
+                    Destroy all infrastructure managed by Terraform?
+                    This will remove the provisioned Taskflow environment.
+                    ''',
+                ok: 'Destroy Environment'
+            )
+                }
+            }
+            }
+
+        stage('Terraform Destroy & Verify') {
+            steps {
+                withCredentials([
+            string(
+                credentialsId: 'taskflow-ansible-public-key',
+                variable: 'TF_VAR_ssh_public_key'
+            )
+        ]) {
+                    sh '''
+                echo "========================================"
+                echo "Terraform Destroy"
+                echo "========================================"
+
+                terraform -chdir=terraform init \
+                    -input=false \
+                    -reconfigure
+
+                terraform -chdir=terraform destroy \
+                    -input=false \
+                    -auto-approve \
+                    -no-color \
+                    | tee terraform/destroy.txt
+
+                echo "========================================"
+                echo "Verify Terraform State"
+                echo "========================================"
+
+                STATE_RESOURCES="$(
+                    terraform -chdir=terraform state list
+                )"
+
+                if [ -n "$STATE_RESOURCES" ]; then
+                    echo "ERROR: Terraform state still contains resources:"
+                    echo "$STATE_RESOURCES"
+                    exit 1
+                fi
+
+                echo "SUCCESS: Terraform state contains 0 managed resources."
+
+                echo "========================================"
+                echo "Terraform State"
+                echo "========================================"
+
+                terraform -chdir=terraform show -no-color
+            '''
+        }
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                artifacts: 'terraform/destroy.txt',
+                allowEmptyArchive: true
+            )
+                }
             }
         }
     }
