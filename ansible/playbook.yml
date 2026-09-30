@@ -57,9 +57,11 @@
       ansible.builtin.debug:
         var: docker_version.stdout_lines
 
-    - name: Pull Taskflow API image from Lab 07 registry
+    - name: Pull Taskflow API image on Jenkins agent
       ansible.builtin.command:
         cmd: "docker pull {{ taskflow_image }}"
+      delegate_to: localhost
+      become: false
       register: pull_result
       changed_when: >
         'Downloaded newer image' in pull_result.stdout
