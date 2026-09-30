@@ -1759,15 +1759,9 @@ spec:
                 }
 
                 always {
-                    archiveArtifacts(
-                        artifacts: '**/npm-debug.log*',
-                        allowEmptyArchive: true
-                    )
+                    archiveArtifacts(artifacts: '**/npm-debug.log*', allowEmptyArchive: true)
 
-                    archiveArtifacts(
-                        artifacts: 'backend/reports/**',
-                        allowEmptyArchive: true
-                    )
+                    archiveArtifacts(artifacts: 'backend/reports/**', allowEmptyArchive: true)
                 }
             }
         }
