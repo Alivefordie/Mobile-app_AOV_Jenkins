@@ -1,0 +1,22 @@
+groups:
+  - name: jenkins-pipeline-alerts
+
+    rules:
+      - alert: JenkinsQueueWaitTooHigh
+        expr: |
+          jenkins_job_queuing_duration{
+            job="jenkins",
+            quantile="0.95"
+          } > 120
+        for: 5m
+
+        labels:
+          severity: warning
+          service: jenkins
+
+        annotations:
+          summary: "Jenkins queue wait exceeds 2 minutes"
+          description: >
+            Jenkins p95 queue wait time has remained above
+            2 minutes for at least 5 minutes.
+            This may indicate insufficient build-agent capacity.

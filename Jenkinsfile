@@ -1,9 +1,25 @@
 pipeline {
-    agent any
+    // agent any
 
-    tools {
-        nodejs 'node26'
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+    - name: node
+      image: node:20-alpine
+      command:
+        - cat
+      tty: true
+'''
+            defaultContainer 'node'
+        }
     }
+    // tools {
+    //     nodejs 'node26'
+    // }
 
     environment {
         APP_NAME = 'taskflow-api'
@@ -15,12 +31,6 @@ pipeline {
 
         AWS_ENDPOINT_URL    = 'http://localstack:4566'
         AWS_ENDPOINT_URL_S3 = 'http://localstack:4566'
-
-        /*
-         * FAST = direct push บน feature/*
-         * FULL = develop, main, PR และ branch อื่น ๆ
-         */
-        CI_MODE = 'FULL'
     }
 
     options {
@@ -41,17 +51,6 @@ pipeline {
                     def isPullRequest =
                         env.CHANGE_ID?.trim()
 
-                    /*
-                     * Direct feature branch build:
-                     *
-                     * feature/foo
-                     *   → FAST
-                     *
-                     * PR build:
-                     *
-                     * PR-123 -> develop
-                     *   → FULL
-                     */
                     if (isFeatureBranch && !isPullRequest) {
                         env.CI_MODE = 'FAST'
                     } else {
@@ -62,12 +61,13 @@ pipeline {
                     ========================================
                     Pipeline Environment
                     ========================================
-                    APP_NAME     : ${env.APP_NAME}
-                    NODE_ENV     : ${env.NODE_ENV}
-                    BRANCH_NAME  : ${env.BRANCH_NAME}
-                    CHANGE_ID    : ${env.CHANGE_ID ?: '-'}
-                    CHANGE_TARGET: ${env.CHANGE_TARGET ?: '-'}
-                    CI_MODE      : ${env.CI_MODE}
+                    APP_NAME      : ${env.APP_NAME}
+                    NODE_ENV      : ${env.NODE_ENV}
+                    BRANCH_NAME   : ${env.BRANCH_NAME}
+                    CHANGE_ID     : ${env.CHANGE_ID ?: '-'}
+                    CHANGE_BRANCH : ${env.CHANGE_BRANCH ?: '-'}
+                    CHANGE_TARGET : ${env.CHANGE_TARGET ?: '-'}
+                    CI_MODE       : ${env.CI_MODE}
                     ========================================
                     """.stripIndent()
                 }
@@ -75,12 +75,48 @@ pipeline {
                 sh '''
                     node --version
                     npm --version
-                    docker --version
-                    docker compose version
                 '''
             }
         }
 
+        stage('Kubernetes Dynamic Agent') {
+            when {
+                expression {
+                    env.BRANCH_NAME ==~ /^feature\/.+/ &&
+                    !env.CHANGE_ID?.trim()
+                }
+            }
+
+            steps {
+                sh '''
+                    echo "========================================"
+                    echo "Kubernetes Dynamic Jenkins Agent"
+                    echo "========================================"
+
+                    echo "Hostname:"
+                    hostname
+
+                    echo ""
+
+                    echo "Node:"
+                    node --version
+
+                    echo ""
+
+                    echo "NPM:"
+                    npm --version
+
+                    echo ""
+
+                    echo "Pod environment:"
+                    printenv | sort | grep -E \
+                        'JENKINS|NODE_NAME|WORKSPACE|HOSTNAME' \
+                        || true
+
+                    echo "========================================"
+                '''
+            }
+        }
         // =========================================================
         // FULL CI - Secret Detection
         // =========================================================
@@ -1695,51 +1731,85 @@ pipeline {
                 }
             }
         }
+
+        stage('Archive Artifacts') {
+            steps {
+                echo 'Preparing build artifacts...'
+            }
+
+            post {
+                success {
+                    echo """
+                    ${env.APP_NAME} Pipeline completed successfully.
+
+                    Branch : ${env.BRANCH_NAME}
+                    Mode   : ${env.CI_MODE}
+                    Env    : ${env.NODE_ENV}
+                    """
+                }
+
+                failure {
+                    echo """
+                    ${env.APP_NAME} Pipeline failed.
+
+                    Branch : ${env.BRANCH_NAME}
+                    Mode   : ${env.CI_MODE}
+                    Stage  : ${env.STAGE_NAME}
+                    """
+                }
+
+                always {
+                    archiveArtifacts(artifacts: '**/npm-debug.log*', allowEmptyArchive: true)
+
+                    archiveArtifacts(artifacts: 'backend/reports/**', allowEmptyArchive: true)
+                }
+            }
+        }
     }
 
     // =============================================================
     // Global Post
     // =============================================================
 
-    post {
-        success {
-            echo """
-            ${env.APP_NAME} Pipeline completed successfully.
+    // post {
+    //     success {
+    //         echo """
+    //         ${env.APP_NAME} Pipeline completed successfully.
 
-            Branch : ${env.BRANCH_NAME}
-            Mode   : ${env.CI_MODE}
-            Env    : ${env.NODE_ENV}
-            """
-        }
+    //         Branch : ${env.BRANCH_NAME}
+    //         Mode   : ${env.CI_MODE}
+    //         Env    : ${env.NODE_ENV}
+    //         """
+    //     }
 
-        failure {
-            echo """
-            ${env.APP_NAME} Pipeline failed.
+    //     failure {
+    //         echo """
+    //         ${env.APP_NAME} Pipeline failed.
 
-            Branch : ${env.BRANCH_NAME}
-            Mode   : ${env.CI_MODE}
-            Stage  : ${env.STAGE_NAME}
-            """
-        }
+    //         Branch : ${env.BRANCH_NAME}
+    //         Mode   : ${env.CI_MODE}
+    //         Stage  : ${env.STAGE_NAME}
+    //         """
+    //     }
 
-        always {
-            archiveArtifacts(
-                artifacts: '**/npm-debug.log*',
-                allowEmptyArchive: true
-            )
+    //     always {
+    //         archiveArtifacts(
+    //             artifacts: '**/npm-debug.log*',
+    //             allowEmptyArchive: true
+    //         )
 
-            archiveArtifacts(
-                artifacts: 'backend/reports/**',
-                allowEmptyArchive: true
-            )
+    //         archiveArtifacts(
+    //             artifacts: 'backend/reports/**',
+    //             allowEmptyArchive: true
+    //         )
 
-            sh '''
-                echo "Cleaning dangling Docker images..."
+    //         sh '''
+    //             echo "Cleaning dangling Docker images..."
 
-                docker image prune \
-                    -f \
-                    || true
-            '''
-        }
-    }
+//             docker image prune \
+//                 -f \
+//                 || true
+//         '''
+//     }
+// }
 }
