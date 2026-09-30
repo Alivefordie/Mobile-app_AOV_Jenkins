@@ -1,9 +1,27 @@
 pipeline {
-    agent any
+    // agent any
 
-    tools {
-        nodejs 'node26'
+    agent {
+        kubernetes {
+            label 'k8s-node'
+
+            yaml '''
+            apiVersion: v1
+            kind: Pod
+            spec:
+            containers:
+                - name: node
+                image: node:20-alpine
+                command:
+                    - cat
+                tty: true
+            '''
+            defaultContainer 'node'
+        }
     }
+    // tools {
+    //     nodejs 'node26'
+    // }
 
     environment {
         APP_NAME = 'taskflow-api'
