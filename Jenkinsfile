@@ -18,13 +18,18 @@ pipeline {
         AWS_ENDPOINT_URL_S3 = 'http://localstack:4566'
     }
 
-    options {
-        // A pipeline should never run unbounded because a hung build
-        // can waste agent resources indefinitely.
+        options {
+        skipDefaultCheckout(true)
         timeout(time: 20, unit: 'MINUTES')
-    }
+        }
 
     stages {
+        stage('Checkout') {
+            steps {
+                cleanWs()
+                checkout scm
+            }
+        }
         stage('Environment') {
             steps {
                 echo "APP_NAME=${APP_NAME}, NODE_ENV=${NODE_ENV}"
