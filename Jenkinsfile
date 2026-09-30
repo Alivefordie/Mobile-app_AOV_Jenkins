@@ -77,8 +77,6 @@ pipeline {
                 sh '''
                     node --version
                     npm --version
-                    docker --version
-                    docker compose version
                 '''
             }
         }
@@ -91,40 +89,34 @@ pipeline {
                 }
             }
 
-            agent {
-                label 'k8s-node'
-            }
-
             steps {
-                container('node') {
-                    sh '''
-                        echo "========================================"
-                        echo "Kubernetes Dynamic Jenkins Agent"
-                        echo "========================================"
+                sh '''
+                    echo "========================================"
+                    echo "Kubernetes Dynamic Jenkins Agent"
+                    echo "========================================"
 
-                        echo "Hostname:"
-                        hostname
+                    echo "Hostname:"
+                    hostname
 
-                        echo ""
+                    echo ""
 
-                        echo "Node:"
-                        node --version
+                    echo "Node:"
+                    node --version
 
-                        echo ""
+                    echo ""
 
-                        echo "NPM:"
-                        npm --version
+                    echo "NPM:"
+                    npm --version
 
-                        echo ""
+                    echo ""
 
-                        echo "Pod environment:"
-                        printenv | sort | grep -E \
-                            'JENKINS|NODE_NAME|WORKSPACE|HOSTNAME' \
-                            || true
+                    echo "Pod environment:"
+                    printenv | sort | grep -E \
+                        'JENKINS|NODE_NAME|WORKSPACE|HOSTNAME' \
+                        || true
 
-                        echo "========================================"
-                    '''
-                }
+                    echo "========================================"
+                '''
             }
         }
         // =========================================================
@@ -1741,51 +1733,91 @@ pipeline {
                 }
             }
         }
+
+        stage('Archive Artifacts') {
+            steps {
+                echo 'Preparing build artifacts...'
+            }
+
+            post {
+                success {
+                    echo """
+                    ${env.APP_NAME} Pipeline completed successfully.
+
+                    Branch : ${env.BRANCH_NAME}
+                    Mode   : ${env.CI_MODE}
+                    Env    : ${env.NODE_ENV}
+                    """
+                }
+
+                failure {
+                    echo """
+                    ${env.APP_NAME} Pipeline failed.
+
+                    Branch : ${env.BRANCH_NAME}
+                    Mode   : ${env.CI_MODE}
+                    Stage  : ${env.STAGE_NAME}
+                    """
+                }
+
+                always {
+                    archiveArtifacts(
+                        artifacts: '**/npm-debug.log*',
+                        allowEmptyArchive: true
+                    )
+
+                    archiveArtifacts(
+                        artifacts: 'backend/reports/**',
+                        allowEmptyArchive: true
+                    )
+                }
+            }
+        }
     }
 
     // =============================================================
     // Global Post
     // =============================================================
 
-    post {
-        success {
-            echo """
-            ${env.APP_NAME} Pipeline completed successfully.
+    // post {
+    //     success {
+    //         echo """
+    //         ${env.APP_NAME} Pipeline completed successfully.
 
-            Branch : ${env.BRANCH_NAME}
-            Mode   : ${env.CI_MODE}
-            Env    : ${env.NODE_ENV}
-            """
-        }
+    //         Branch : ${env.BRANCH_NAME}
+    //         Mode   : ${env.CI_MODE}
+    //         Env    : ${env.NODE_ENV}
+    //         """
+    //     }
 
-        failure {
-            echo """
-            ${env.APP_NAME} Pipeline failed.
+    //     failure {
+    //         echo """
+    //         ${env.APP_NAME} Pipeline failed.
 
-            Branch : ${env.BRANCH_NAME}
-            Mode   : ${env.CI_MODE}
-            Stage  : ${env.STAGE_NAME}
-            """
-        }
+    //         Branch : ${env.BRANCH_NAME}
+    //         Mode   : ${env.CI_MODE}
+    //         Stage  : ${env.STAGE_NAME}
+    //         """
+    //     }
 
-        always {
-            archiveArtifacts(
-                artifacts: '**/npm-debug.log*',
-                allowEmptyArchive: true
-            )
+    //     always {
+    //         archiveArtifacts(
+    //             artifacts: '**/npm-debug.log*',
+    //             allowEmptyArchive: true
+    //         )
 
-            archiveArtifacts(
-                artifacts: 'backend/reports/**',
-                allowEmptyArchive: true
-            )
+    //         archiveArtifacts(
+    //             artifacts: 'backend/reports/**',
+    //             allowEmptyArchive: true
+    //         )
 
-            sh '''
-                echo "Cleaning dangling Docker images..."
+    //         sh '''
+    //             echo "Cleaning dangling Docker images..."
 
-                docker image prune \
-                    -f \
-                    || true
-            '''
-        }
-    }
+//             docker image prune \
+//                 -f \
+//                 || true
+//         '''
+//     }
+// }
 }
