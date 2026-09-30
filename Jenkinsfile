@@ -8,21 +8,10 @@ apiVersion: v1
 kind: Pod
 
 spec:
-
-  volumes:
-
-    - name: jenkins-workspace
-      emptyDir: {}
-
   containers:
-
-    # =====================================================
-    # Jenkins CI Agent
-    # =====================================================
 
     - name: ci
       image: jenkins-ci-agent:lab10
-
       imagePullPolicy: IfNotPresent
 
       command:
@@ -31,50 +20,29 @@ spec:
       tty: true
 
       env:
-
         - name: DOCKER_HOST
           value: tcp://localhost:2375
 
         - name: DOCKER_TLS_CERTDIR
           value: ""
 
-      volumeMounts:
-
-        - name: jenkins-workspace
-          mountPath: /home/jenkins/agent
-
-    # =====================================================
-    # Docker daemon
-    # =====================================================
-
     - name: dind
       image: docker:28-dind
-
       imagePullPolicy: IfNotPresent
 
       securityContext:
         privileged: true
 
       env:
-
         - name: DOCKER_TLS_CERTDIR
           value: ""
 
       args:
-
         - --host=tcp://0.0.0.0:2375
-
         - --host=unix:///var/run/docker.sock
 
-      volumeMounts:
-
-        - name: jenkins-workspace
-          mountPath: /home/jenkins/agent
-
       readinessProbe:
-
         exec:
-
           command:
             - docker
             - info
