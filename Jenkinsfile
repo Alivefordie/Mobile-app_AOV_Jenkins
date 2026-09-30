@@ -81,6 +81,50 @@ pipeline {
             }
         }
 
+        stage('Kubernetes Dynamic Agent') {
+            when {
+                expression {
+                    env.BRANCH_NAME ==~ /^feature\/.+/ &&
+                    !env.CHANGE_ID?.trim()
+                }
+            }
+
+            agent {
+                label 'k8s-node'
+            }
+
+            steps {
+                container('node') {
+                    sh '''
+                        echo "========================================"
+                        echo "Kubernetes Dynamic Jenkins Agent"
+                        echo "========================================"
+
+                        echo "Hostname:"
+                        hostname
+
+                        echo ""
+
+                        echo "Node:"
+                        node --version
+
+                        echo ""
+
+                        echo "NPM:"
+                        npm --version
+
+                        echo ""
+
+                        echo "Pod environment:"
+                        printenv | sort | grep -E \
+                            'JENKINS|NODE_NAME|WORKSPACE|HOSTNAME' \
+                            || true
+
+                        echo "========================================"
+                    '''
+                }
+            }
+        }
         // =========================================================
         // FULL CI - Secret Detection
         // =========================================================
