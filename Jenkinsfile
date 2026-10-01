@@ -11,7 +11,7 @@ spec:
   containers:
 
     - name: ci
-      image: jenkins-ci-agent:stable
+      image: jenkins-ci-agent:lab10
       imagePullPolicy: IfNotPresent
 
       command:
@@ -27,7 +27,7 @@ spec:
           value: ""
 
     - name: flutter
-      image: ghcr.io/cirruslabs/flutter:3.47.5
+      image: ghcr.io/cirruslabs/flutter:stable
       imagePullPolicy: IfNotPresent
 
       command:
