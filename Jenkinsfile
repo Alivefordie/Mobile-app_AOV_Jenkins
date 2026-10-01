@@ -27,7 +27,7 @@ spec:
           value: ""
 
     - name: flutter
-      image: ghcr.io/cirruslabs/flutter:stable
+      image: ghcr.io/cirruslabs/flutter:3.47.5
       imagePullPolicy: IfNotPresent
 
       command:
