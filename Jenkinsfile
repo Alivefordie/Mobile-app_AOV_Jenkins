@@ -41,6 +41,9 @@ spec:
         - --host=tcp://0.0.0.0:2375
         - --host=unix:///var/run/docker.sock
 
+        # Local Registry uses plain HTTP
+        - --insecure-registry=registry:5000
+
       readinessProbe:
         exec:
           command:
