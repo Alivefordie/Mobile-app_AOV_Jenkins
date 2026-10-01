@@ -26,6 +26,15 @@ spec:
         - name: DOCKER_TLS_CERTDIR
           value: ""
 
+    - name: flutter
+      image: ghcr.io/cirruslabs/flutter:stable
+      imagePullPolicy: IfNotPresent
+
+      command:
+        - cat
+
+      tty: true
+
     - name: dind
       image: docker:28-dind
       imagePullPolicy: IfNotPresent
@@ -40,8 +49,6 @@ spec:
       args:
         - --host=tcp://0.0.0.0:2375
         - --host=unix:///var/run/docker.sock
-
-        # Local Registry uses plain HTTP
         - --insecure-registry=registry:5000
 
       readinessProbe:
@@ -472,6 +479,205 @@ spec:
             }
         }
 
+        // =========================================================
+        // MOBILE - Install dependencies
+        // =========================================================
+
+        stage('Mobile - Install') {
+            steps {
+                container('flutter') {
+                    dir('frontend') {
+                        sh '''
+                            echo "========================================"
+                            echo "Flutter Environment"
+                            echo "========================================"
+
+                            flutter --version
+                            dart --version
+
+                            flutter pub get
+                        '''
+                    }
+                }
+            }
+        }
+
+        // =========================================================
+        // MOBILE - Quality & Security
+        // =========================================================
+
+        stage('Mobile Quality & Security') {
+            failFast true
+
+            parallel {
+                stage('Flutter Analyze') {
+                    steps {
+                        container('flutter') {
+                            dir('frontend') {
+                                sh '''
+                                    echo "========================================"
+                                    echo "Flutter Analyze"
+                                    echo "========================================"
+
+                                    flutter analyze
+                                '''
+                            }
+                        }
+                    }
+                }
+
+                stage('Flutter Test + Coverage') {
+                    steps {
+                        container('flutter') {
+                            dir('frontend') {
+                                sh '''
+                                    echo "========================================"
+                                    echo "Flutter Test"
+                                    echo "========================================"
+
+                                    flutter test \
+                                        --coverage
+                                '''
+                            }
+                        }
+                    }
+
+                    post {
+                        always {
+                            archiveArtifacts(
+                                artifacts: 'frontend/coverage/**',
+                                allowEmptyArchive: true
+                            )
+                        }
+                    }
+                }
+
+                stage('Mobile SCA - OSV Scanner') {
+                    steps {
+                        dir('frontend') {
+                            sh '''
+                                echo "========================================"
+                                echo "OSV Scanner"
+                                echo "========================================"
+
+                                mkdir -p reports
+
+                                docker run --rm \
+                                    -v "$PWD:/src" \
+                                    ghcr.io/google/osv-scanner:latest \
+                                    scan source \
+                                    --recursive \
+                                    /src
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+
+        // =========================================================
+        // MOBILE - Debug APK
+        // Runs on every branch
+        // =========================================================
+
+        stage('Mobile - Build Debug APK') {
+            steps {
+                container('flutter') {
+                    dir('frontend') {
+                        sh '''
+                            echo "========================================"
+                            echo "Build Debug APK"
+                            echo "========================================"
+
+                            flutter build apk \
+                                --debug
+                        '''
+                    }
+                }
+            }
+
+            post {
+                success {
+                    archiveArtifacts(
+                        artifacts: 'frontend/build/app/outputs/flutter-apk/app-debug.apk',
+                        fingerprint: true
+                    )
+                }
+            }
+        }
+
+        // =========================================================
+        // MOBILE - Signed Release AAB
+        // MAIN ONLY
+        // =========================================================
+
+        stage('Mobile - Signed Release AAB') {
+            when {
+                branch 'main'
+            }
+
+            steps {
+                container('flutter') {
+                    withCredentials([
+                        file(
+                            credentialsId: 'taskflow-android-keystore',
+                            variable: 'ANDROID_KEYSTORE_FILE'
+                        ),
+                        string(
+                            credentialsId: 'taskflow-android-store-pass',
+                            variable: 'ANDROID_STORE_PASS'
+                        ),
+                        string(
+                            credentialsId: 'taskflow-android-key-pass',
+                            variable: 'ANDROID_KEY_PASS'
+                        ),
+                        string(
+                            credentialsId: 'taskflow-android-key-alias',
+                            variable: 'ANDROID_KEY_ALIAS'
+                        )
+                    ]) {
+                        dir('frontend') {
+                            sh '''
+                                set +x
+
+                                cp "$ANDROID_KEYSTORE_FILE" \
+                                    android/upload-keystore.jks
+
+                                printf '%s\n' \
+                                    "storePassword=$ANDROID_STORE_PASS" \
+                                    "keyPassword=$ANDROID_KEY_PASS" \
+                                    "keyAlias=$ANDROID_KEY_ALIAS" \
+                                    "storeFile=upload-keystore.jks" \
+                                    > android/key.properties
+
+                                flutter build appbundle --release
+
+                                rm -f android/key.properties
+                                rm -f android/upload-keystore.jks
+                            '''
+                        }
+                    }
+                }
+            }
+
+            post {
+                always {
+                    container('flutter') {
+                        sh '''
+                            rm -f frontend/android/key.properties
+                            rm -f frontend/android/upload-keystore.jks
+                        '''
+                    }
+                }
+
+                success {
+                    archiveArtifacts(
+                        artifacts: 'frontend/build/app/outputs/bundle/release/app.aab',
+                        fingerprint: true
+                    )
+                }
+            }
+        }
         // =========================================================
         // Resolve Docker image
         // FULL only
