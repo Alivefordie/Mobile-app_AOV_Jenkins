@@ -11,7 +11,7 @@ spec:
   containers:
 
     - name: ci
-      image: jenkins-ci-agent:stable
+      image: jenkins-ci-agent:lab10
       imagePullPolicy: IfNotPresent
 
       command:
