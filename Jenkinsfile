@@ -67,8 +67,8 @@ spec:
         APP_NAME = 'taskflow-api'
         NODE_ENV = 'test'
 
-        AWS_ACCESS_KEY_ID     = 'test'
-        AWS_SECRET_ACCESS_KEY = 'test'
+        // AWS_ACCESS_KEY_ID     = 'test'
+        // AWS_SECRET_ACCESS_KEY = 'test'
         AWS_DEFAULT_REGION    = 'us-east-1'
 
         AWS_ENDPOINT_URL    = 'http://localstack:4566'
@@ -1409,33 +1409,34 @@ spec:
             }
 
             steps {
-                sh '''
-                    echo "=== Kubernetes context ==="
+                withCredentials([
+                    file(
+                        credentialsId: 'taskflow-kubeconfig',
+                        variable: 'KUBE_CONFIG_FILE'
+                    )
+                ]) {
+                    sh '''
+                        set +x
 
-                    kubectl \
-                        config \
-                        current-context
+                        export KUBECONFIG="$KUBE_CONFIG_FILE"
 
-                    echo "=== Kubernetes nodes ==="
+                        echo "=== Kubernetes context ==="
+                        kubectl config current-context
 
-                    kubectl \
-                        get nodes
+                        echo "=== Kubernetes nodes ==="
+                        kubectl get nodes
 
-                    echo "=== Current workloads ==="
-
-                    kubectl \
-                        get deployments
-
-                    kubectl \
-                        get svc
-                '''
+                        echo "=== Current workloads ==="
+                        kubectl get deployments
+                        kubectl get svc
+                    '''
+                }
             }
         }
 
         // =========================================================
         // DEVELOP - Blue / Green deployment
         // =========================================================
-
         stage('Deploy — Staging') {
             when {
                 branch 'develop'
@@ -1446,181 +1447,192 @@ spec:
             }
 
             steps {
-                script {
-                    def currentColor = sh(
-                        script: '''
+                withCredentials([
+                    file(
+                        credentialsId: 'taskflow-kubeconfig',
+                        variable: 'KUBE_CONFIG_FILE'
+                    )
+                ]) {
+                    withEnv([
+                        'KUBECONFIG=$KUBE_CONFIG_FILE'
+                    ]) {
+                        script {
+                            def currentColor = sh(
+                            script: '''
+                                kubectl \
+                                    get service \
+                                    taskflow-api \
+                                    -o jsonpath='{.spec.selector.color}'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                            def nextColor =
+                            currentColor == 'blue'
+                            ? 'green'
+                            : 'blue'
+
+                            env.PREVIOUS_COLOR =
+                            currentColor
+
+                            env.NEXT_COLOR =
+                            nextColor
+
+                            env.SERVICE_SWITCHED =
+                            'false'
+
+                            echo """
+                        Current active color : ${currentColor}
+                        Deploying to         : ${nextColor}
+                        Image                : ${env.IMAGE_NAME}
+                        """.stripIndent()
+
+                        // ---------------------------------------------
+                        // Deploy inactive color
+                        // ---------------------------------------------
+
+                            sh """
                             kubectl \
-                                get service \
-                                taskflow-api \
-                                -o jsonpath='{.spec.selector.color}'
-                        ''',
-                        returnStdout: true
-                    ).trim()
+                                set image \
+                                deployment/taskflow-${nextColor} \
+                                taskflow-api=${env.IMAGE_NAME}
 
-                    def nextColor =
-                        currentColor == 'blue'
-                        ? 'green'
-                        : 'blue'
-
-                    env.PREVIOUS_COLOR =
-                        currentColor
-
-                    env.NEXT_COLOR =
-                        nextColor
-
-                    env.SERVICE_SWITCHED =
-                        'false'
-
-                    echo """
-                    Current active color : ${currentColor}
-                    Deploying to         : ${nextColor}
-                    Image                : ${env.IMAGE_NAME}
-                    """.stripIndent()
-
-                    // ---------------------------------------------
-                    // Deploy inactive color
-                    // ---------------------------------------------
-
-                    sh """
-                        kubectl \
-                            set image \
-                            deployment/taskflow-${nextColor} \
-                            taskflow-api=${env.IMAGE_NAME}
-
-                        kubectl \
-                            rollout status \
-                            deployment/taskflow-${nextColor} \
-                            --timeout=120s
-                    """
-
-                    echo """
-                    ${nextColor} rollout completed.
-                    """
-
-                    // ---------------------------------------------
-                    // Health check inactive deployment
-                    // ---------------------------------------------
-
-                    sh """
-                        kubectl \
-                            port-forward \
-                            deployment/taskflow-${nextColor} \
-                            18080:3000 \
-                            > /tmp/taskflow-port-forward.log \
-                            2>&1 &
-
-                        PF_PID=\$!
-
-                        trap \
-                            'kill \$PF_PID 2>/dev/null || true' \
-                            EXIT
-
-                        sleep 3
-
-                        echo "Checking ${nextColor} health..."
-
-                        curl \
-                            --fail \
-                            --retry 5 \
-                            --retry-delay 2 \
-                            http://127.0.0.1:18080/health
-
-                        kill \
-                            \$PF_PID \
-                            2>/dev/null \
-                            || true
-
-                        trap - EXIT
-                    """
-
-                    echo """
-                    ${nextColor} health check passed.
-                    Switching traffic...
-                    """
-
-                    // ---------------------------------------------
-                    // Switch Service
-                    // ---------------------------------------------
-
-                    sh """
-                        kubectl \
-                            patch service \
-                            taskflow-api \
-                            --type merge \
-                            -p '{"spec":{"selector":{"app":"taskflow-api","color":"${nextColor}"}}}'
-                    """
-
-                    env.SERVICE_SWITCHED =
-                        'true'
-
-                    // ---------------------------------------------
-                    // Post-switch smoke test
-                    // ---------------------------------------------
-
-                    sh """
-                        echo "Running post-switch smoke test..."
-
-                        kubectl \
-                            port-forward \
-                            service/taskflow-api \
-                            18081:3000 \
-                            > /tmp/taskflow-service-port-forward.log \
-                            2>&1 &
-
-                        PF_PID=\$!
-
-                        trap \
-                            'kill \$PF_PID 2>/dev/null || true' \
-                            EXIT
-
-                        sleep 3
-
-                        curl \
-                            --fail \
-                            --retry 5 \
-                            --retry-delay 2 \
-                            http://127.0.0.1:18081/health
-
-                        kill \
-                            \$PF_PID \
-                            2>/dev/null \
-                            || true
-
-                        trap - EXIT
-                    """
-
-                    echo '''
-                    Post-switch smoke test passed.
-                    '''
-
-                    if (
-                        env.FORCE_POST_SWITCH_FAILURE ==
-                        'true'
-                    ) {
-                        error '''
-                        Injected failure after Service switch.
-                        '''
-                    }
-
-                    def activeColor = sh(
-                        script: '''
                             kubectl \
-                                get service \
+                                rollout status \
+                                deployment/taskflow-${nextColor} \
+                                --timeout=120s
+                        """
+
+                            echo """
+                        ${nextColor} rollout completed.
+                        """
+
+                        // ---------------------------------------------
+                        // Health check inactive deployment
+                        // ---------------------------------------------
+
+                            sh """
+                            kubectl \
+                                port-forward \
+                                deployment/taskflow-${nextColor} \
+                                18080:3000 \
+                                > /tmp/taskflow-port-forward.log \
+                                2>&1 &
+
+                            PF_PID=\$!
+
+                            trap \
+                                'kill \$PF_PID 2>/dev/null || true' \
+                                EXIT
+
+                            sleep 3
+
+                            echo "Checking ${nextColor} health..."
+
+                            curl \
+                                --fail \
+                                --retry 5 \
+                                --retry-delay 2 \
+                                http://127.0.0.1:18080/health
+
+                            kill \
+                                \$PF_PID \
+                                2>/dev/null \
+                                || true
+
+                            trap - EXIT
+                        """
+
+                            echo """
+                        ${nextColor} health check passed.
+                        Switching traffic...
+                        """
+
+                        // ---------------------------------------------
+                        // Switch Service
+                        // ---------------------------------------------
+
+                            sh """
+                            kubectl \
+                                patch service \
                                 taskflow-api \
-                                -o jsonpath='{.spec.selector.color}'
-                        ''',
-                        returnStdout: true
-                    ).trim()
+                                --type merge \
+                                -p '{"spec":{"selector":{"app":"taskflow-api","color":"${nextColor}"}}}'
+                        """
 
-                    echo """
-                    Service now points to:
-                    ${activeColor}
-                    """
+                            env.SERVICE_SWITCHED =
+                            'true'
 
-                    if (activeColor != nextColor) {
-                        error '''
-                        Service switch verification failed.
+                        // ---------------------------------------------
+                        // Post-switch smoke test
+                        // ---------------------------------------------
+
+                            sh """
+                            echo "Running post-switch smoke test..."
+
+                            kubectl \
+                                port-forward \
+                                service/taskflow-api \
+                                18081:3000 \
+                                > /tmp/taskflow-service-port-forward.log \
+                                2>&1 &
+
+                            PF_PID=\$!
+
+                            trap \
+                                'kill \$PF_PID 2>/dev/null || true' \
+                                EXIT
+
+                            sleep 3
+
+                            curl \
+                                --fail \
+                                --retry 5 \
+                                --retry-delay 2 \
+                                http://127.0.0.1:18081/health
+
+                            kill \
+                                \$PF_PID \
+                                2>/dev/null \
+                                || true
+
+                            trap - EXIT
+                        """
+
+                            echo '''
+                        Post-switch smoke test passed.
                         '''
+
+                            if (
+                            env.FORCE_POST_SWITCH_FAILURE ==
+                            'true'
+                        ) {
+                                error '''
+                            Injected failure after Service switch.
+                            '''
+                        }
+
+                            def activeColor = sh(
+                            script: '''
+                                kubectl \
+                                    get service \
+                                    taskflow-api \
+                                    -o jsonpath='{.spec.selector.color}'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                            echo """
+                        Service now points to:
+                        ${activeColor}
+                        """
+
+                            if (activeColor != nextColor) {
+                                error '''
+                            Service switch verification failed.
+                            '''
+                            }
+                        }
                     }
                 }
             }
@@ -1861,50 +1873,4 @@ spec:
             }
         }
     }
-
-    // =============================================================
-    // Global Post
-    // =============================================================
-
-    // post {
-    //     success {
-    //         echo """
-    //         ${env.APP_NAME} Pipeline completed successfully.
-
-    //         Branch : ${env.BRANCH_NAME}
-    //         Mode   : ${env.CI_MODE}
-    //         Env    : ${env.NODE_ENV}
-    //         """
-    //     }
-
-    //     failure {
-    //         echo """
-    //         ${env.APP_NAME} Pipeline failed.
-
-    //         Branch : ${env.BRANCH_NAME}
-    //         Mode   : ${env.CI_MODE}
-    //         Stage  : ${env.STAGE_NAME}
-    //         """
-    //     }
-
-    //     always {
-    //         archiveArtifacts(
-    //             artifacts: '**/npm-debug.log*',
-    //             allowEmptyArchive: true
-    //         )
-
-    //         archiveArtifacts(
-    //             artifacts: 'backend/reports/**',
-    //             allowEmptyArchive: true
-    //         )
-
-    //         sh '''
-    //             echo "Cleaning dangling Docker images..."
-
-//             docker image prune \
-//                 -f \
-//                 || true
-//         '''
-//     }
-// }
 }
