@@ -43,25 +43,12 @@ pipeline {
                     def isPullRequest =
                         env.CHANGE_ID?.trim()
 
-                    if (isFeatureBranch && !isPullRequest && !isCapstoneBranch) {
+                    if (isFeatureBranch && !isPullRequest) {
                         env.CI_MODE = 'FAST'
                     } else {
                         env.CI_MODE = 'FULL'
                     }
 
-                    echo """
-                    ========================================
-                    Pipeline Environment
-                    ========================================
-                    APP_NAME      : ${env.APP_NAME}
-                    NODE_ENV      : ${env.NODE_ENV}
-                    BRANCH_NAME   : ${env.BRANCH_NAME}
-                    CHANGE_ID     : ${env.CHANGE_ID ?: '-'}
-                    CHANGE_BRANCH : ${env.CHANGE_BRANCH ?: '-'}
-                    CHANGE_TARGET : ${env.CHANGE_TARGET ?: '-'}
-                    CI_MODE       : ${env.CI_MODE}
-                    ========================================
-                    """.stripIndent()
                     env.COMMIT_SHA = sh(
                         script: 'git rev-parse --short=7 HEAD',
                         returnStdout: true
@@ -71,16 +58,38 @@ pipeline {
                         script: 'git log -1 --pretty=%s',
                         returnStdout: true
                     ).trim()
-                }
-                if (env.BRANCH_NAME == 'develop') {
-                    env.ARGOCD_APP = 'taskflow-staging'
-                    env.DEPLOY_NAMESPACE = 'taskflow-staging'
+
+                    // -----------------------------
+                    // Deployment environment
+                    // -----------------------------
+                    if (env.BRANCH_NAME == 'develop') {
+                        env.ARGOCD_APP = 'taskflow-staging'
+                        env.DEPLOY_NAMESPACE = 'taskflow-staging'
+                    }
+
+                    if (env.BRANCH_NAME == 'main') {
+                        env.ARGOCD_APP = 'taskflow-production'
+                        env.DEPLOY_NAMESPACE = 'taskflow-production'
+                    }
+
+                    echo """
+                    ========================================
+                    Pipeline Environment
+                    ========================================
+                    APP_NAME         : ${env.APP_NAME}
+                    NODE_ENV         : ${env.NODE_ENV}
+                    BRANCH_NAME      : ${env.BRANCH_NAME}
+                    CHANGE_ID        : ${env.CHANGE_ID ?: '-'}
+                    CHANGE_BRANCH    : ${env.CHANGE_BRANCH ?: '-'}
+                    CHANGE_TARGET    : ${env.CHANGE_TARGET ?: '-'}
+                    CI_MODE          : ${env.CI_MODE}
+                    ARGOCD_APP       : ${env.ARGOCD_APP ?: '-'}
+                    DEPLOY_NAMESPACE : ${env.DEPLOY_NAMESPACE ?: '-'}
+                    COMMIT_SHA       : ${env.COMMIT_SHA}
+                    ========================================
+                    """.stripIndent()
                 }
 
-                if (env.BRANCH_NAME == 'main') {
-                    env.ARGOCD_APP = 'taskflow-production'
-                    env.DEPLOY_NAMESPACE = 'taskflow-production'
-                }
                 sh '''
                     node --version
                     npm --version
