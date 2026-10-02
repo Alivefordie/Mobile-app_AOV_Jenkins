@@ -46,13 +46,6 @@ spec:
         - name: flutter-cache
           mountPath: /cache
 
-    volumes:
-        - name: flutter-cache
-        persistentVolumeClaim:
-            claimName: flutter-cache
-
-      tty: true
-
     - name: dind
       image: docker:28-dind
       imagePullPolicy: IfNotPresent
@@ -79,6 +72,11 @@ spec:
         periodSeconds: 2
         timeoutSeconds: 2
         failureThreshold: 30
+
+  volumes:
+    - name: flutter-cache
+      persistentVolumeClaim:
+        claimName: flutter-cache
 '''
 
             defaultContainer 'ci'
@@ -592,111 +590,6 @@ spec:
                 }
             }
         }
-
-        // =========================================================
-        // MOBILE - Debug APK
-        // Runs on every branch
-        // =========================================================
-
-        stage('Mobile - Build Debug APK') {
-            steps {
-                container('flutter') {
-                    dir('frontend') {
-                        sh '''
-                            echo "========================================"
-                            echo "Build Debug APK"
-                            echo "========================================"
-
-                            flutter build apk \
-                                --debug \
-                                -v
-                        '''
-                    }
-                }
-            }
-
-            post {
-                success {
-                    archiveArtifacts(
-                        artifacts: 'frontend/build/app/outputs/flutter-apk/app-debug.apk',
-                        fingerprint: true
-                    )
-                }
-            }
-        }
-
-        // =========================================================
-        // MOBILE - Signed Release AAB
-        // MAIN ONLY
-        // =========================================================
-
-        stage('Mobile - Signed Release AAB') {
-            when {
-                branch 'main'
-            }
-
-            steps {
-                container('flutter') {
-                    withCredentials([
-                        file(
-                            credentialsId: 'taskflow-android-keystore',
-                            variable: 'ANDROID_KEYSTORE_FILE'
-                        ),
-                        string(
-                            credentialsId: 'taskflow-android-store-pass',
-                            variable: 'ANDROID_STORE_PASS'
-                        ),
-                        string(
-                            credentialsId: 'taskflow-android-key-pass',
-                            variable: 'ANDROID_KEY_PASS'
-                        ),
-                        string(
-                            credentialsId: 'taskflow-android-key-alias',
-                            variable: 'ANDROID_KEY_ALIAS'
-                        )
-                    ]) {
-                        dir('frontend') {
-                            sh '''
-                                set +x
-
-                                cp "$ANDROID_KEYSTORE_FILE" \
-                                    android/upload-keystore.jks
-
-                                printf '%s\n' \
-                                    "storePassword=$ANDROID_STORE_PASS" \
-                                    "keyPassword=$ANDROID_KEY_PASS" \
-                                    "keyAlias=$ANDROID_KEY_ALIAS" \
-                                    "storeFile=upload-keystore.jks" \
-                                    > android/key.properties
-
-                                flutter build appbundle --release
-
-                                rm -f android/key.properties
-                                rm -f android/upload-keystore.jks
-                            '''
-                        }
-                    }
-                }
-            }
-
-            post {
-                always {
-                    container('flutter') {
-                        sh '''
-                            rm -f frontend/android/key.properties
-                            rm -f frontend/android/upload-keystore.jks
-                        '''
-                    }
-                }
-
-                success {
-                    archiveArtifacts(
-                        artifacts: 'frontend/build/app/outputs/bundle/release/app.aab',
-                        fingerprint: true
-                    )
-                }
-            }
-        }
         // =========================================================
         // Resolve Docker image
         // FULL only
@@ -774,37 +667,88 @@ spec:
                 }
             }
         }
+        // =========================================================
+        // MOBILE - Debug APK
+        // Runs on every branch
+        // =========================================================
 
-        stage('Build Image') {
-            when {
-                allOf {
-                    expression {
-                        env.CI_MODE == 'FULL'
+        // =========================================================
+        // PARALLEL BUILDS
+        // Mobile and Backend are independent
+        // =========================================================
+
+        stage('Parallel Builds') {
+            failFast true
+
+            parallel {
+                // =================================================
+                // MOBILE - Debug APK
+                // Every branch
+                // =================================================
+
+                stage('Mobile - Build Debug APK') {
+                    steps {
+                        container('flutter') {
+                            dir('frontend') {
+                                sh '''
+                                    echo "========================================"
+                                    echo "Build Debug APK"
+                                    echo "========================================"
+
+                                    flutter build apk \
+                                        --debug
+                                '''
+                            }
+                        }
                     }
 
-                    anyOf {
-                        changeset 'backend/**'
-
-                        expression {
-                            env.NEED_IMAGE_BUILD == 'true'
+                    post {
+                        success {
+                            archiveArtifacts(
+                                artifacts: 'frontend/build/app/outputs/flutter-apk/app-debug.apk',
+                                fingerprint: true
+                            )
                         }
                     }
                 }
-            }
 
-            steps {
-                dir('backend') {
-                    script {
-                        echo "Building image: ${env.IMAGE_NAME}"
+                // =================================================
+                // BACKEND - Docker Image
+                // FULL only
+                // =================================================
 
-                        sh """
-                            docker build \
-                                -t ${env.IMAGE_NAME} \
-                                .
+                stage('Backend - Build Image') {
+                    when {
+                        allOf {
+                            expression {
+                                env.CI_MODE == 'FULL'
+                            }
 
-                            docker push \
-                                ${env.IMAGE_NAME}
-                        """
+                            anyOf {
+                                changeset 'backend/**'
+
+                                expression {
+                                    env.NEED_IMAGE_BUILD == 'true'
+                                }
+                            }
+                        }
+                    }
+
+                    steps {
+                        dir('backend') {
+                            script {
+                                echo "Building image: ${env.IMAGE_NAME}"
+
+                                sh '''
+                                    docker build \
+                                        -t "$IMAGE_NAME" \
+                                        .
+
+                                    docker push \
+                                        "$IMAGE_NAME"
+                                '''
+                            }
+                        }
                     }
                 }
             }
