@@ -895,7 +895,7 @@ spec:
 
                                 trivy image \
                                     --cache-backend memory \
-                                    --image-src registry \
+                                    --image-src remote \
                                     --insecure \
                                     --exit-code 1 \
                                     --severity HIGH,CRITICAL \
