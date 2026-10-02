@@ -127,12 +127,11 @@ spec:
         APP_NAME = 'taskflow-api'
         NODE_ENV = 'test'
 
-        // AWS_ACCESS_KEY_ID     = 'test'
-        // AWS_SECRET_ACCESS_KEY = 'test'
-        AWS_DEFAULT_REGION    = 'us-east-1'
+        PROMETHEUS_URL = 'http://prometheus:9090'
 
-        AWS_ENDPOINT_URL    = 'http://localstack:4566'
-        AWS_ENDPOINT_URL_S3 = 'http://localstack:4566'
+        AWS_DEFAULT_REGION    = 'us-east-1'
+        AWS_ENDPOINT_URL      = 'http://localstack:4566'
+        AWS_ENDPOINT_URL_S3   = 'http://localstack:4566'
     }
 
     options {
@@ -1812,6 +1811,295 @@ spec:
             }
         }
 
+        stage('Pipeline Health Gate') {
+            when {
+                branch 'main'
+            }
+
+            steps {
+                script {
+                    echo '''
+                    ========================================
+                    Pipeline Health Gate
+                    Requirement:
+                    Last 20 completed builds
+                    Success rate >= 90%
+                    ========================================
+                    '''
+
+                    long endTime =
+                        System.currentTimeMillis() / 1000L
+
+                    // 7 days should easily contain 20 lab builds.
+                    long startTime =
+                        endTime - (7L * 24L * 60L * 60L)
+
+                    sh """
+                        curl -fsS --get \
+                            '${env.PROMETHEUS_URL}/api/v1/query_range' \
+                            --data-urlencode 'query=sum(jenkins_runs_total_total{job="jenkins"})' \
+                            --data-urlencode 'start=${startTime}' \
+                            --data-urlencode 'end=${endTime}' \
+                            --data-urlencode 'step=15s' \
+                            -o prometheus-total.json
+
+                        curl -fsS --get \
+                            '${env.PROMETHEUS_URL}/api/v1/query_range' \
+                            --data-urlencode 'query=sum(jenkins_runs_success_total{job="jenkins"})' \
+                            --data-urlencode 'start=${startTime}' \
+                            --data-urlencode 'end=${endTime}' \
+                            --data-urlencode 'step=15s' \
+                            -o prometheus-success.json
+                    """
+
+                    def totalResponse =
+                        readJSON file: 'prometheus-total.json'
+
+                    def successResponse =
+                        readJSON file: 'prometheus-success.json'
+
+
+                    // -----------------------------------------------------
+                    // Validate Prometheus responses
+                    // -----------------------------------------------------
+
+                    if (
+                        totalResponse.status != 'success' ||
+                        successResponse.status != 'success'
+                    ) {
+                        error '''
+                        Pipeline Health Gate failed:
+                        Prometheus query was not successful.
+                        '''
+                    }
+
+                    def totalResults =
+                        totalResponse.data?.result ?: []
+
+                    def successResults =
+                        successResponse.data?.result ?: []
+
+                    if (
+                        totalResults.isEmpty() ||
+                        successResults.isEmpty()
+                    ) {
+                        error '''
+                        Pipeline Health Gate failed:
+                        Jenkins build metrics were not found in Prometheus.
+                        '''
+                    }
+
+
+                    // -----------------------------------------------------
+                    // Convert range-query samples into timestamp -> counter
+                    // -----------------------------------------------------
+
+                    Map<Long, Double> totalSamples = [:]
+
+                    totalResults[0].values.each { sample ->
+                        long timestamp =
+                            ((Number) sample[0]).longValue()
+
+                        double value =
+                            sample[1].toString().toDouble()
+
+                        totalSamples[timestamp] = value
+                    }
+
+
+                    Map<Long, Double> successSamples = [:]
+
+                    successResults[0].values.each { sample ->
+                        long timestamp =
+                            ((Number) sample[0]).longValue()
+
+                        double value =
+                            sample[1].toString().toDouble()
+
+                        successSamples[timestamp] = value
+                    }
+
+
+                    // -----------------------------------------------------
+                    // Reconstruct build completions from counter increases.
+                    //
+                    // Jenkins metrics are counters:
+                    //
+                    // total:
+                    //   10 -> 11 = one completed build
+                    //
+                    // success:
+                    //   8 -> 9  = that build succeeded
+                    //
+                    // Counter reset is also handled here.
+                    // -----------------------------------------------------
+
+                    def timestamps =
+                        totalSamples
+                            .keySet()
+                            .intersect(successSamples.keySet())
+                            .sort()
+
+                    List<Map> buildGroups = []
+
+                    Double previousTotal = null
+                    Double previousSuccess = null
+
+                    timestamps.each { timestamp ->
+
+                        double currentTotal =
+                            totalSamples[timestamp]
+
+                        double currentSuccess =
+                            successSamples[timestamp]
+
+                        if (
+                            previousTotal != null &&
+                            previousSuccess != null
+                        ) {
+                            double totalDelta =
+                                currentTotal >= previousTotal
+                                    ? currentTotal - previousTotal
+                                    : currentTotal
+
+                            double successDelta =
+                                currentSuccess >= previousSuccess
+                                    ? currentSuccess - previousSuccess
+                                    : currentSuccess
+
+                            int builds =
+                                Math.round(totalDelta) as int
+
+                            int successes =
+                                Math.round(successDelta) as int
+
+                            if (builds > 0) {
+                                buildGroups << [
+                                    timestamp : timestamp,
+                                    builds    : builds,
+                                    successes : successes
+                                ]
+                            }
+                        }
+
+                        previousTotal = currentTotal
+                        previousSuccess = currentSuccess
+                    }
+
+
+                    // -----------------------------------------------------
+                    // Walk backwards until exactly the latest 20 builds
+                    // -----------------------------------------------------
+
+                    int requiredBuilds = 20
+                    int countedBuilds = 0
+                    int successfulBuilds = 0
+
+                    for (
+                        int i = buildGroups.size() - 1;
+                        i >= 0 && countedBuilds < requiredBuilds;
+                        i--
+                    ) {
+                        def group =
+                            buildGroups[i]
+
+                        int remaining =
+                            requiredBuilds - countedBuilds
+
+                        /*
+                        * Normally this is 1 because Jenkins builds take
+                        * longer than the Prometheus scrape interval.
+                        *
+                        * If multiple builds finish between two scrapes
+                        * and only part of that group belongs in the
+                        * latest 20, Prometheus counters cannot tell us
+                        * which individual ones succeeded.
+                        */
+                        if (group.builds > remaining) {
+                            error """
+                            Pipeline Health Gate cannot calculate the
+                            exact last ${requiredBuilds} builds.
+
+                            ${group.builds} builds completed between two
+                            Prometheus samples while only ${remaining}
+                            builds were still required.
+
+                            Reduce the Prometheus scrape interval.
+                            """.stripIndent()
+                        }
+
+                        countedBuilds +=
+                            group.builds
+
+                        successfulBuilds +=
+                            group.successes
+                    }
+
+
+                    if (countedBuilds < requiredBuilds) {
+                        error """
+                        Pipeline Health Gate failed:
+
+                        Only ${countedBuilds} completed builds were found.
+                        At least ${requiredBuilds} builds are required.
+                        """.stripIndent()
+                    }
+
+
+                    double successRate =
+                        (
+                            successfulBuilds * 100.0
+                        ) / requiredBuilds
+
+
+                    echo """
+                    ========================================
+                    Pipeline Health
+                    ========================================
+
+                    Builds checked : ${requiredBuilds}
+                    Successful     : ${successfulBuilds}
+                    Failed/other   : ${requiredBuilds - successfulBuilds}
+                    Success rate   : ${String.format('%.2f', successRate)}%
+                    Required       : 90.00%
+
+                    ========================================
+                    """.stripIndent()
+
+
+                    if (successRate < 90.0) {
+                        error """
+                        Pipeline Health Gate FAILED.
+
+                        Rolling success rate:
+                        ${String.format('%.2f', successRate)}%
+
+                        Required:
+                        >= 90%
+
+                        Production deployment aborted.
+                        """.stripIndent()
+                    }
+
+                    echo '''
+                    Pipeline Health Gate PASSED.
+                    Production deployment may continue.
+                    '''
+                }
+            }
+
+            post {
+                always {
+                    archiveArtifacts(
+                        artifacts: '''
+                            prometheus-total.json,
+                            prometheus-success.json
+                        ''',
+                        allowEmptyArchive: true
+                    )
+                }
+            }
+        }
         // =========================================================
         // MAIN ONLY
         // =========================================================
