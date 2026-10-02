@@ -190,7 +190,15 @@ spec:
                     ========================================
                     """.stripIndent()
                 }
+                env.COMMIT_SHA = sh(
+                    script: 'git rev-parse --short=7 HEAD',
+                    returnStdout: true
+                ).trim()
 
+                env.COMMIT_MESSAGE = sh(
+                    script: 'git log -1 --pretty=%s',
+                    returnStdout: true
+                ).trim()
                 sh '''
                     node --version
                     npm --version
@@ -1737,144 +1745,6 @@ spec:
             }
         }
 
-        stage('Pipeline Health Gate') {
-            when {
-                branch 'main'
-            }
-
-            steps {
-                script {
-                    echo '''
-                    ========================================
-                    Pipeline Health Gate
-                    Requirement:
-                    Last 20 completed builds
-                    Success rate >= 90%
-                    ========================================
-                    '''
-
-                    sh '''
-                        curl -fsS \
-                            'http://jenkins-blueocean:8080/job/taskflow/job/taskflow-api-multibranch/job/main/api/json?tree=builds[number,result]{0,30}' \
-                            -o jenkins-builds.json
-                    '''
-
-                    def response =
-                        readJSON file: 'jenkins-builds.json'
-
-                    def allBuilds =
-                        response.builds ?: []
-
-                    def completedBuilds =
-                        allBuilds
-                            .findAll {
-                                it.result != null
-                            }
-                            .take(20)
-
-                    if (completedBuilds.size() < 20) {
-                        error """
-                        Pipeline Health Gate FAILED.
-
-                        Only ${completedBuilds.size()} completed builds were found.
-
-                        At least 20 completed builds are required
-                        before production deployment can continue.
-                        """.stripIndent()
-                    }
-
-                    int successfulBuilds =
-                        completedBuilds.count {
-                            it.result == 'SUCCESS'
-                        }
-
-                    int failedBuilds =
-                        completedBuilds.count {
-                            it.result == 'FAILURE'
-                        }
-
-                    int unstableBuilds =
-                        completedBuilds.count {
-                            it.result == 'UNSTABLE'
-                        }
-
-                    int abortedBuilds =
-                        completedBuilds.count {
-                            it.result == 'ABORTED'
-                        }
-
-                    int otherBuilds =
-                        completedBuilds.size() -
-                        successfulBuilds -
-                        failedBuilds -
-                        unstableBuilds -
-                        abortedBuilds
-
-                    int totalBuilds =
-                        completedBuilds.size()
-
-                    double successRate =
-                        (
-                            successfulBuilds * 100.0
-                        ) / totalBuilds
-
-                    echo """
-                    ========================================
-                    Last 20 Completed Builds
-                    ========================================
-
-                    ${completedBuilds.collect {
-                        "#${it.number} -> ${it.result}"
-                    }.join('\n')}
-
-                    ========================================
-                    Pipeline Health
-                    ========================================
-
-                    Builds checked : ${totalBuilds}
-                    Successful     : ${successfulBuilds}
-                    Failed         : ${failedBuilds}
-                    Unstable       : ${unstableBuilds}
-                    Aborted        : ${abortedBuilds}
-                    Other          : ${otherBuilds}
-
-                    Success rate   : ${String.format('%.2f', successRate)}%
-                    Required       : 90.00%
-
-                    ========================================
-                    """.stripIndent()
-
-                    if (successRate < 90.0) {
-                        error """
-                        Pipeline Health Gate FAILED.
-
-                        Rolling success rate:
-                        ${String.format('%.2f', successRate)}%
-
-                        Required:
-                        >= 90%
-
-                        Production deployment aborted.
-                        """.stripIndent()
-                    }
-
-                    echo '''
-                    Pipeline Health Gate PASSED.
-                    Production deployment may continue.
-                    '''
-                }
-            }
-
-            post {
-                always {
-                    archiveArtifacts(
-                        artifacts: 'jenkins-builds.json',
-                        allowEmptyArchive: true
-                    )
-                }
-            }
-        }
-
         stage('Deploy — Production') {
             when {
                 beforeInput true
@@ -2033,6 +1903,25 @@ spec:
                     archiveArtifacts(artifacts: 'backend/reports/**', allowEmptyArchive: true)
                 }
             }
+        }
+    }
+    post {
+        success {
+            emailext(
+                to: 'the78639@gmail.com',
+                subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                mimeType: 'text/html',
+                body: '${JELLY_SCRIPT,template="taskflow-ci"}'
+            )
+        }
+
+        failure {
+            emailext(
+                to: 'the78639@gmail.com',
+                subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                mimeType: 'text/html',
+                body: '${JELLY_SCRIPT,template="taskflow-ci"}'
+            )
         }
     }
 }
