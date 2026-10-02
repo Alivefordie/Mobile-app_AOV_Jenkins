@@ -1766,7 +1766,7 @@ spec:
                             --data-urlencode 'query=sum(jenkins_runs_total_total{job="jenkins"})' \
                             --data-urlencode 'start=${startTime}' \
                             --data-urlencode 'end=${endTime}' \
-                            --data-urlencode 'step=15s' \
+                            --data-urlencode 'step=60s' \
                             -o prometheus-total.json
 
                         curl -fsS --get \
@@ -1774,7 +1774,7 @@ spec:
                             --data-urlencode 'query=sum(jenkins_runs_success_total{job="jenkins"})' \
                             --data-urlencode 'start=${startTime}' \
                             --data-urlencode 'end=${endTime}' \
-                            --data-urlencode 'step=15s' \
+                            --data-urlencode 'step=60s' \
                             -o prometheus-success.json
                     """
 
