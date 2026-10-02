@@ -3,136 +3,7 @@ pipeline {
 
     agent {
         kubernetes {
-            yaml '''
-apiVersion: v1
-kind: Pod
-
-spec:
-  securityContext:
-    fsGroup: 1000
-
-  containers:
-    - name: ci
-      image: jenkins-ci-agent:lab10
-      imagePullPolicy: IfNotPresent
-
-      resources:
-        requests:
-          cpu: "250m"
-          memory: "512Mi"
-        limits:
-          cpu: "1"
-          memory: "1536Mi"
-
-      command:
-        - cat
-
-      tty: true
-
-      env:
-        - name: DOCKER_HOST
-          value: tcp://localhost:2375
-
-        - name: DOCKER_TLS_CERTDIR
-          value: ""
-
-        - name: TRIVY_CACHE_DIR
-          value: /cache/trivy
-
-      volumeMounts:
-        - name: trivy-cache
-          mountPath: /cache/trivy
-
-    - name: flutter
-      image: taskflow-flutter-ci:lab10
-      imagePullPolicy: IfNotPresent
-
-      resources:
-        requests:
-          cpu: "500m"
-          memory: "1Gi"
-        limits:
-          cpu: "2"
-          memory: "5Gi"
-
-      command:
-        - cat
-
-      tty: true
-
-      env:
-        - name: GRADLE_USER_HOME
-          value: /cache/gradle
-
-        - name: PUB_CACHE
-          value: /cache/pub
-
-      volumeMounts:
-        - name: flutter-cache
-          mountPath: /cache
-
-    - name: dind
-      image: docker:28-dind
-      imagePullPolicy: IfNotPresent
-
-      resources:
-        requests:
-          cpu: "250m"
-          memory: "512Mi"
-        limits:
-          cpu: "1500m"
-          memory: "2Gi"
-
-      securityContext:
-        privileged: true
-
-      env:
-        - name: DOCKER_TLS_CERTDIR
-          value: ""
-
-      args:
-        - --host=tcp://0.0.0.0:2375
-        - --host=unix:///var/run/docker.sock
-        - --insecure-registry=registry:5000
-
-      readinessProbe:
-        exec:
-          command:
-            - docker
-            - info
-
-        initialDelaySeconds: 3
-        periodSeconds: 2
-        timeoutSeconds: 2
-        failureThreshold: 30
-
-    - name: playwright
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
-      imagePullPolicy: IfNotPresent
-
-      command:
-        - cat
-
-      tty: true
-
-      resources:
-        requests:
-          cpu: "250m"
-          memory: "512Mi"
-        limits:
-          cpu: "1"
-          memory: "2Gi"
-
-  volumes:
-    - name: flutter-cache
-      persistentVolumeClaim:
-        claimName: flutter-cache
-
-    - name: trivy-cache
-      persistentVolumeClaim:
-        claimName: trivy-cache
-'''
-
+            yamlFile 'ci/pods/backend.yaml'
             defaultContainer 'ci'
         }
     }
@@ -144,11 +15,13 @@ spec:
         APP_NAME = 'taskflow-api'
         NODE_ENV = 'test'
 
-        PROMETHEUS_URL = 'http://prometheus:9090'
+        GITOPS_REPO   = 'https://github.com/Alivefordie/test-ci-cd-gitops.git'
+        GITOPS_BRANCH = 'main'
+        GITOPS_DIR    = 'gitops'
 
-        AWS_DEFAULT_REGION    = 'us-east-1'
-        AWS_ENDPOINT_URL      = 'http://localstack:4566'
-        AWS_ENDPOINT_URL_S3   = 'http://localstack:4566'
+        TASKFLOW_CHART = 'taskflow-chart'
+
+        ARGOCD_NAMESPACE = 'argocd'
     }
 
     options {
@@ -199,6 +72,15 @@ spec:
                     script: 'git log -1 --pretty=%s',
                     returnStdout: true
                 ).trim()
+                if (env.BRANCH_NAME == 'develop') {
+                    env.ARGOCD_APP = 'taskflow-staging'
+                    env.DEPLOY_NAMESPACE = 'taskflow-staging'
+                }
+
+                if (env.BRANCH_NAME == 'main') {
+                    env.ARGOCD_APP = 'taskflow-production'
+                    env.DEPLOY_NAMESPACE = 'taskflow-production'
+                }
                 sh '''
                     node --version
                     npm --version
@@ -216,66 +98,20 @@ spec:
 
             steps {
                 sh '''
-                    echo "========================================"
-                    echo "Kubernetes Dynamic Jenkins Agent"
-                    echo "========================================"
-
-                    echo
-                    echo "Hostname:"
-                    hostname
-
-                    echo
-                    echo "===== Runtime ====="
-
-                    java -version
-                    node --version
-                    npm --version
-
-                    echo
-                    echo "===== Docker ====="
-
-                    docker --version
-                    docker compose version
-                    docker buildx version
-
-                    echo
-                    echo "Waiting for Docker daemon..."
-
-                    i=0
-
-                    until docker info >/dev/null 2>&1
-                    do
-                        i=$((i + 1))
-
-                        if [ "$i" -ge 30 ]; then
-                            echo "Docker daemon did not become ready."
-                            exit 1
-                        fi
-
-                        sleep 2
-                    done
-
-                    docker info
-
-                    echo
-                    echo "===== Infrastructure ====="
-
-                    terraform version
-                    ansible --version
-                    ansible-lint --version
-
-                    echo
                     echo "===== Kubernetes ====="
 
                     kubectl version --client
                     helm version
-                    kind version
 
                     echo
                     echo "===== Security ====="
 
-                    tfsec --version
-                    checkov --version
+                    gitleaks version
+                    semgrep --version
+                    opa version
+                    trivy --version
+                    syft version
+                    cosign version
 
                     echo
                     echo "===== Utilities ====="
@@ -283,11 +119,6 @@ spec:
                     yq --version
                     git --version
                     curl --version
-
-                    echo
-                    echo "========================================"
-                    echo "CI agent ready"
-                    echo "========================================"
                 '''
             }
         }
@@ -1106,75 +937,157 @@ spec:
             }
         }
 
-        stage('IaC Verification') {
+        stage('Production Approval') {
             when {
-                allOf {
-                    expression {
-                        env.CI_MODE == 'FULL'
-                    }
+                beforeInput true
+                branch 'main'
+            }
 
-                    anyOf {
-                        changeset 'terraform/**'
-                        changeset 'ansible/**'
-                    }
+            input {
+                message "Deploy ${env.IMAGE_NAME} to production?"
+                ok 'Deploy'
+            }
+
+            steps {
+                echo 'Production deployment approved.'
+            }
+        }
+
+        stage('Checkout GitOps Repo') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'main'
                 }
             }
 
-            failFast true
+            steps {
+                dir("${GITOPS_DIR}") {
+                    deleteDir()
 
-            parallel {
-                stage('Terraform Validate') {
-                    when {
-                        changeset 'terraform/**'
-                    }
+                    git(
+                        branch: "${GITOPS_BRANCH}",
+                        credentialsId: 'github-jenkins',
+                        url: "${GITOPS_REPO}"
+                    )
 
-                    steps {
-                        sh '''
-                        terraform -chdir=terraform fmt -check -recursive
-                        terraform -chdir=terraform init -backend=false
-                        terraform -chdir=terraform validate
+                    sh '''
+                        echo "GitOps repository:"
+                        git remote -v
+
+                        echo "Branch:"
+                        git branch --show-current
+
+                        echo "Commit:"
+                        git log -1 --oneline
                     '''
-                    }
                 }
+            }
+        }
 
-                stage('Ansible Lint') {
-                    when {
-                        changeset 'ansible/**'
-                    }
-
-                    steps {
-                        sh 'ansible-lint ansible/playbook.yml'
-                    }
+        stage('Lint Helm Chart') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'main'
                 }
+            }
 
-                stage('tfsec') {
-                    when {
-                        changeset 'terraform/**'
-                    }
-
-                    steps {
-                        sh 'tfsec terraform --no-color'
-                    }
-                }
-
-                stage('Checkov') {
-                    when {
-                        changeset 'terraform/**'
-                    }
-
-                    steps {
-                        sh '''
-                        checkov \
-                            --directory terraform \
-                            --framework terraform \
-                            --skip-check CKV_AWS_8,CKV_AWS_126,CKV_AWS_135,CKV2_AWS_41
+            steps {
+                dir("${GITOPS_DIR}") {
+                    sh '''
+                        echo "Lint Taskflow chart..."
+                        helm lint "$TASKFLOW_CHART"
                     '''
+                }
+            }
+        }
+
+        stage('Update GitOps Manifest') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'main'
+                }
+            }
+
+            steps {
+                dir("${GITOPS_DIR}") {
+                    script {
+                        if (env.BRANCH_NAME == 'develop') {
+                            env.GITOPS_VALUES = "${env.TASKFLOW_CHART}/values-staging.yaml"
+                        }
+
+                        if (env.BRANCH_NAME == 'main') {
+                            env.GITOPS_VALUES = "${env.TASKFLOW_CHART}/values-production.yaml"
+                        }
+                    }
+
+                    sh '''
+                        echo "Updating:"
+                        echo "$GITOPS_VALUES"
+
+                        yq -i \
+                        '.image.repository = "registry:5000/taskflow-api" |
+                        .image.tag = strenv(IMAGE_TAG)' \
+                        "$GITOPS_VALUES"
+
+                        echo "Updated image:"
+                        yq '.image' "$GITOPS_VALUES"
+
+                        git diff -- "$GITOPS_VALUES"
+                    '''
+                }
+            }
+        }
+
+        stage('Commit GitOps Change') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    branch 'main'
+                }
+            }
+
+            steps {
+                dir("${GITOPS_DIR}") {
+                    script {
+                        sh '''
+                            git config user.name "jenkins"
+                            git config user.email "jenkins@taskflow.local"
+
+                            git add "$GITOPS_VALUES"
+                        '''
+
+                        def hasChanges = sh(
+                            script: 'git diff --cached --quiet',
+                            returnStatus: true
+                        )
+
+                        if (hasChanges == 0) {
+                            env.GITOPS_CHANGED = 'false'
+                            echo 'No GitOps changes.'
+                        } else {
+                            env.GITOPS_CHANGED = 'true'
+
+                            sh '''
+                                git commit \
+                                    -m "deploy(${BRANCH_NAME}): taskflow-api ${IMAGE_TAG}"
+                            '''
+
+                            env.GITOPS_COMMIT = sh(
+                                script: 'git rev-parse HEAD',
+                                returnStdout: true
+                            ).trim()
+
+                            echo "GitOps commit: ${env.GITOPS_COMMIT}"
+                        }
                     }
                 }
             }
         }
 
-        stage('Terraform Plan') {
+        stage('Push GitOps change') {
             when {
                 allOf {
                     anyOf {
@@ -1182,301 +1095,47 @@ spec:
                         branch 'main'
                     }
 
-                    anyOf {
-                        changeset 'terraform/**'
-                        changeset 'ansible/**'
+                    expression {
+                        env.GITOPS_CHANGED == 'true'
                     }
                 }
             }
 
             steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'taskflow-localstack-aws',
-                        usernameVariable: 'AWS_ACCESS_KEY_ID',
-                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                    ),
-                    string(
-                        credentialsId: 'taskflow-ansible-public-key',
-                        variable: 'TF_VAR_ssh_public_key'
-                    )
-                ]) {
-                    withEnv([
-                        'AWS_EC2_METADATA_DISABLED=true'
+                dir("${GITOPS_DIR}") {
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: 'github-jenkins',
+                            usernameVariable: 'GIT_USERNAME',
+                            passwordVariable: 'GIT_TOKEN'
+                        )
                     ]) {
                         sh '''
-                        terraform \
-                            -chdir=terraform \
-                            init \
-                            -input=false \
-                            -reconfigure
+                            echo "Pushing GitOps commit..."
 
-                        terraform \
-                            -chdir=terraform \
-                            plan \
-                            -input=false \
-                            -no-color \
-                            -out=tfplan
-
-                        terraform \
-                            -chdir=terraform \
-                            show \
-                            -no-color \
-                            tfplan \
-                            | tee terraform/plan.txt
-                    '''
-                    }
-                }
-
-                archiveArtifacts(
-                    artifacts: 'terraform/tfplan,terraform/plan.txt',
-                    fingerprint: true
-                )
-            }
-        }
-
-        stage('Infrastructure Approval') {
-            when {
-                allOf {
-                    branch 'main'
-
-                    anyOf {
-                        changeset 'terraform/**'
-                        changeset 'ansible/**'
-                    }
-                }
-            }
-
-            steps {
-                script {
-                    def planSummary = sh(
-                        script: '''
-                            grep \
-                                -E '^Plan:|^No changes\\.' \
-                                terraform/plan.txt \
-                                | tail -1
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-                    if (!planSummary) {
-                        planSummary =
-                            'Plan generated. Review terraform/plan.txt artifact.'
-                    }
-
-                    timeout(
-                        time: 30,
-                        unit: 'MINUTES'
-                    ) {
-                        input(
-                            message: """
-                            Terraform plan is ready.
-
-                            ${planSummary}
-
-                            Review terraform/plan.txt before approving.
-
-                            Apply this exact Terraform plan?
-                            """,
-                            ok: 'Approve Apply'
-                        )
-                    }
-                }
-            }
-        }
-
-        stage('Terraform Apply') {
-            when {
-                allOf {
-                    branch 'main'
-
-                    anyOf {
-                        changeset 'terraform/**'
-                        changeset 'ansible/**'
-                    }
-                }
-            }
-
-            steps {
-                withCredentials([
-                    string(
-                        credentialsId: 'taskflow-ansible-public-key',
-                        variable: 'TF_VAR_ssh_public_key'
-                    )
-                ]) {
-                    sh '''
-                        echo "========================================"
-                        echo "Terraform Apply"
-                        echo "========================================"
-
-                        test -f terraform/tfplan
-
-                        terraform \
-                            -chdir=terraform \
-                            apply \
-                            -input=false \
-                            tfplan
-                    '''
-                }
-            }
-        }
-
-        stage('Configure with Ansible') {
-            when {
-                allOf {
-                    branch 'main'
-
-                    anyOf {
-                        changeset 'terraform/**'
-                        changeset 'ansible/**'
-                    }
-                }
-            }
-
-            steps {
-                script {
-                    def instanceAddress = sh(
-                        script: '''
-                            terraform \
-                                -chdir=terraform \
-                                output \
-                                -raw instance_address
-                        ''',
-                        returnStdout: true
-                    ).trim()
-
-                    if (!instanceAddress) {
-                        error '''
-                        Terraform did not return instance_address.
+                            git push \
+                              https://$GIT_USERNAME:$GIT_TOKEN@github.com/Alivefordie/test-ci-cd-gitops.git \
+                              HEAD:$GITOPS_BRANCH
                         '''
                     }
 
-                    echo """
-                    Provisioned host:
-                    ${instanceAddress}
-                    """
+                    echo "GitOps repo updated with tag: ${env.IMAGE_TAG}"
+                }
+            }
+        }
 
-                    writeFile(
-                        file: 'ansible/inventory.ini',
-                        text: """
-                        [taskflow]
-                        ${instanceAddress}
-                        """.stripIndent()
-                    )
+        stage('Connect to Cluster') {
+            when {
+                allOf {
+                    anyOf {
+                        branch 'develop'
+                        branch 'main'
+                    }
 
-                    withCredentials([
-                        sshUserPrivateKey(
-                            credentialsId: 'taskflow-ansible-ssh',
-                            keyFileVariable: 'ANSIBLE_SSH_KEY',
-                            usernameVariable: 'ANSIBLE_SSH_USER'
-                        )
-                    ]) {
-                        withEnv([
-                            "TASKFLOW_IMAGE=${env.IMAGE_NAME}",
-                            "INSTANCE_ADDRESS=${instanceAddress}",
-                            'ANSIBLE_HOST_KEY_CHECKING=False'
-                        ]) {
-                            sh '''
-                                echo "========================================"
-                                echo "Validate Jenkins SSH Key"
-                                echo "========================================"
-
-                                ssh-keygen \
-                                    -y \
-                                    -f "$ANSIBLE_SSH_KEY" \
-                                    > /tmp/jenkins-ansible.pub
-
-                                echo "Jenkins public key:"
-
-                                cat \
-                                    /tmp/jenkins-ansible.pub
-
-                                echo
-
-                                echo "Jenkins key fingerprint:"
-
-                                ssh-keygen \
-                                    -lf \
-                                    /tmp/jenkins-ansible.pub
-
-                                echo "========================================"
-                                echo "Direct SSH Test"
-                                echo "========================================"
-
-                                ssh \
-                                    -o StrictHostKeyChecking=no \
-                                    -o UserKnownHostsFile=/dev/null \
-                                    -o ConnectTimeout=10 \
-                                    -i "$ANSIBLE_SSH_KEY" \
-                                    "$ANSIBLE_SSH_USER@$INSTANCE_ADDRESS" \
-                                    "echo SSH_OK"
-
-                                echo "========================================"
-                                echo "Wait for provisioned host"
-                                echo "========================================"
-
-                                ansible \
-                                    -i ansible/inventory.ini \
-                                    taskflow \
-                                    -m ansible.builtin.wait_for_connection \
-                                    -a "timeout=60" \
-                                    --private-key "$ANSIBLE_SSH_KEY" \
-                                    -u "$ANSIBLE_SSH_USER"
-
-                                echo "========================================"
-                                echo "Configure with Ansible"
-                                echo "========================================"
-
-                                ansible-playbook \
-                                    -i ansible/inventory.ini \
-                                    ansible/playbook.yml \
-                                    --private-key "$ANSIBLE_SSH_KEY" \
-                                    -u "$ANSIBLE_SSH_USER"
-                            '''
-                        }
+                    expression {
+                        env.GITOPS_CHANGED == 'true'
                     }
                 }
-            }
-        }
-
-        stage('Kubernetes Connectivity') {
-            when {
-                branch 'develop'
-            }
-
-            steps {
-                withCredentials([
-                    file(
-                        credentialsId: 'taskflow-kubeconfig',
-                        variable: 'KUBE_CONFIG_FILE'
-                    )
-                ]) {
-                    sh '''
-                        set +x
-
-                        export KUBECONFIG="$KUBE_CONFIG_FILE"
-
-                        echo "=== Kubernetes context ==="
-                        kubectl config current-context
-
-                        echo "=== Kubernetes nodes ==="
-                        kubectl get nodes
-
-                        echo "=== Current workloads ==="
-                        kubectl get deployments
-                        kubectl get svc
-                    '''
-                }
-            }
-        }
-
-        stage('Deploy — Staging') {
-            when {
-                branch 'develop'
-            }
-
-            environment {
-                FORCE_POST_SWITCH_FAILURE = 'false'
             }
 
             steps {
@@ -1489,132 +1148,175 @@ spec:
                     withEnv([
                         'KUBECONFIG=$KUBE_CONFIG_FILE'
                     ]) {
-                        script {
-                            def currentColor = sh(
-                            script: '''
-                                kubectl \
-                                    get service \
-                                    taskflow-api \
-                                    -o jsonpath='{.spec.selector.color}'
-                            ''',
-                            returnStdout: true
-                        ).trim()
+                        sh '''
+                            echo "========================================"
+                            echo "Kubernetes / Argo CD"
+                            echo "========================================"
 
-                            def nextColor =
-                            currentColor == 'blue'
-                            ? 'green'
-                            : 'blue'
-
-                            env.PREVIOUS_COLOR =
-                            currentColor
-
-                            env.NEXT_COLOR =
-                            nextColor
-
-                            env.SERVICE_SWITCHED =
-                            'false'
-
-                            echo """
-                        Current active color : ${currentColor}
-                        Deploying to         : ${nextColor}
-                        Image                : ${env.IMAGE_NAME}
-                        """.stripIndent()
-
-                        // ---------------------------------------------
-                        // Deploy inactive color
-                        // ---------------------------------------------
-
-                            sh """
-                            kubectl \
-                                set image \
-                                deployment/taskflow-${nextColor} \
-                                taskflow-api=${env.IMAGE_NAME}
+                            kubectl cluster-info
 
                             kubectl \
-                                rollout status \
-                                deployment/taskflow-${nextColor} \
-                                --timeout=120s
-                        """
+                                -n "$ARGOCD_NAMESPACE" \
+                                get application "$ARGOCD_APP"
+                        '''
+                    }
+                }
+            }
+        }
 
-                            echo """
-                        ${nextColor} rollout completed.
-                        """
+        stage('Wait for Argo CD') {
+            when {
+                allOf {
+                    anyOf {
+                        branch 'develop'
+                        branch 'main'
+                    }
 
-                        // ---------------------------------------------
-                        // Health check inactive deployment
-                        // ---------------------------------------------
+                    expression {
+                        env.GITOPS_CHANGED == 'true'
+                    }
+                }
+            }
 
-                            sh """
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'taskflow-kubeconfig',
+                        variable: 'KUBE_CONFIG_FILE'
+                    )
+                ]) {
+                    withEnv([
+                        'KUBECONFIG=$KUBE_CONFIG_FILE'
+                    ]) {
+                        timeout(time: 10, unit: 'MINUTES') {
+                            sh '''
+                                echo "Waiting for Argo CD: $ARGOCD_APP"
+
+                                while true; do
+                                    SYNC=$(kubectl \
+                                        -n "$ARGOCD_NAMESPACE" \
+                                        get application "$ARGOCD_APP" \
+                                        -o jsonpath='{.status.sync.status}')
+
+                                    HEALTH=$(kubectl \
+                                        -n "$ARGOCD_NAMESPACE" \
+                                        get application "$ARGOCD_APP" \
+                                        -o jsonpath='{.status.health.status}')
+
+                                    REVISION=$(kubectl \
+                                        -n "$ARGOCD_NAMESPACE" \
+                                        get application "$ARGOCD_APP" \
+                                        -o jsonpath='{.status.sync.revision}')
+
+                                    echo "sync=$SYNC health=$HEALTH revision=$REVISION"
+
+                                    echo "Expected revision: $GITOPS_COMMIT"
+                                    echo "Actual revision  : $REVISION"
+                                    echo "sync=$SYNC health=$HEALTH"
+
+                                    if [ "$REVISION" = "$GITOPS_COMMIT" ] &&
+                                    [ "$SYNC" = "Synced" ] &&
+                                    [ "$HEALTH" = "Healthy" ]; then
+
+                                        echo "Argo CD deployed expected GitOps revision."
+                                        break
+                                    fi
+
+                                    sleep 5
+                                done
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Verify Deployment') {
+            when {
+                allOf {
+                    anyOf {
+                        branch 'develop'
+                        branch 'main'
+                    }
+
+                    expression {
+                        env.GITOPS_CHANGED == 'true'
+                    }
+                }
+            }
+
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'taskflow-kubeconfig',
+                        variable: 'KUBE_CONFIG_FILE'
+                    )
+                ]) {
+                    withEnv([
+                        'KUBECONFIG=$KUBE_CONFIG_FILE'
+                    ]) {
+                        sh '''
+                            echo "========================================"
+                            echo "Deployment Verification"
+                            echo "========================================"
+
                             kubectl \
-                                port-forward \
-                                deployment/taskflow-${nextColor} \
-                                18080:3000 \
-                                > /tmp/taskflow-port-forward.log \
-                                2>&1 &
+                                -n "$DEPLOY_NAMESPACE" \
+                                get pods
 
-                            PF_PID=\$!
-
-                            trap \
-                                'kill \$PF_PID 2>/dev/null || true' \
-                                EXIT
-
-                            sleep 3
-
-                            echo "Checking ${nextColor} health..."
-
-                            curl \
-                                --fail \
-                                --retry 5 \
-                                --retry-delay 2 \
-                                http://127.0.0.1:18080/health
-
-                            kill \
-                                \$PF_PID \
-                                2>/dev/null \
-                                || true
-
-                            trap - EXIT
-                        """
-
-                            echo """
-                        ${nextColor} health check passed.
-                        Switching traffic...
-                        """
-
-                        // ---------------------------------------------
-                        // Switch Service
-                        // ---------------------------------------------
-
-                            sh """
-                            kubectl \
-                                patch service \
-                                taskflow-api \
-                                --type merge \
-                                -p '{"spec":{"selector":{"app":"taskflow-api","color":"${nextColor}"}}}'
-                        """
-
-                            env.SERVICE_SWITCHED =
-                            'true'
-
-                        // ---------------------------------------------
-                        // Post-switch smoke test
-                        // ---------------------------------------------
-
-                            sh """
-                            echo "Running post-switch smoke test..."
+                            echo
 
                             kubectl \
+                                -n "$DEPLOY_NAMESPACE" \
+                                get svc
+
+                            echo
+
+                            kubectl \
+                                -n "$DEPLOY_NAMESPACE" \
+                                get deployment \
+                                -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[*].image
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Smoke Test') {
+            when {
+                allOf {
+                    anyOf {
+                        branch 'develop'
+                        branch 'main'
+                    }
+
+                    expression {
+                        env.GITOPS_CHANGED == 'true'
+                    }
+                }
+            }
+
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'taskflow-kubeconfig',
+                        variable: 'KUBE_CONFIG_FILE'
+                    )
+                ]) {
+                    withEnv([
+                        'KUBECONFIG=$KUBE_CONFIG_FILE'
+                    ]) {
+                        sh '''
+                            kubectl \
+                                -n "$DEPLOY_NAMESPACE" \
                                 port-forward \
                                 service/taskflow-api \
                                 18081:3000 \
-                                > /tmp/taskflow-service-port-forward.log \
-                                2>&1 &
+                                >/tmp/taskflow-port-forward.log 2>&1 &
 
-                            PF_PID=\$!
+                            PF_PID=$!
 
-                            trap \
-                                'kill \$PF_PID 2>/dev/null || true' \
-                                EXIT
+                            trap 'kill $PF_PID 2>/dev/null || true' EXIT
 
                             sleep 3
 
@@ -1624,253 +1326,13 @@ spec:
                                 --retry-delay 2 \
                                 http://127.0.0.1:18081/health
 
-                            kill \
-                                \$PF_PID \
-                                2>/dev/null \
-                                || true
-
+                            kill "$PF_PID" 2>/dev/null || true
                             trap - EXIT
-                        """
-
-                            echo '''
-                        Post-switch smoke test passed.
-                        '''
-
-                            if (
-                            env.FORCE_POST_SWITCH_FAILURE ==
-                            'true'
-                        ) {
-                                error '''
-                            Injected failure after Service switch.
-                            '''
-                        }
-
-                            def activeColor = sh(
-                            script: '''
-                                kubectl \
-                                    get service \
-                                    taskflow-api \
-                                    -o jsonpath='{.spec.selector.color}'
-                            ''',
-                            returnStdout: true
-                        ).trim()
-
-                            echo """
-                        Service now points to:
-                        ${activeColor}
-                        """
-
-                            if (activeColor != nextColor) {
-                                error '''
-                            Service switch verification failed.
-                            '''
-                            }
-                        }
-                    }
-                }
-            }
-
-            post {
-                failure {
-                    script {
-                        if (
-                            env.SERVICE_SWITCHED == 'true' &&
-                            env.PREVIOUS_COLOR?.trim()
-                        ) {
-                            echo '''
-                            Deployment failed after traffic switch.
-                            '''
-
-                            echo """
-                            Rolling Service back to:
-                            ${env.PREVIOUS_COLOR}
-                            """
-
-                            def rollbackStatus = sh(
-                                script: """
-                                    kubectl \
-                                        patch service \
-                                        taskflow-api \
-                                        --type merge \
-                                        -p '{"spec":{"selector":{"app":"taskflow-api","color":"${env.PREVIOUS_COLOR}"}}}'
-                                """,
-                                returnStatus: true
-                            )
-
-                            if (rollbackStatus == 0) {
-                                def rollbackColor = sh(
-                                    script: '''
-                                        kubectl \
-                                            get service \
-                                            taskflow-api \
-                                            -o jsonpath='{.spec.selector.color}'
-                                    ''',
-                                    returnStdout: true
-                                ).trim()
-
-                                if (
-                                    rollbackColor ==
-                                    env.PREVIOUS_COLOR
-                                ) {
-                                    echo """
-                                    Rollback successful.
-                                    Service restored to:
-                                    ${rollbackColor}
-                                    """
-                                }
-                                else {
-                                    echo """
-                                    WARNING:
-                                    Rollback command succeeded
-                                    but Service points to:
-                                    ${rollbackColor}
-                                    """
-                                }
-                            }
-                            else {
-                                echo '''
-                                WARNING:
-                                Automatic rollback failed.
-                                '''
-                            }
-                        }
-                        else {
-                            echo '''
-                            Failure occurred before traffic switch.
-                            No Service rollback required.
-                            '''
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Deploy — Production') {
-            when {
-                beforeInput true
-                branch 'main'
-            }
-
-            input {
-                message 'Deploy to production?'
-            }
-
-            steps {
-                sh '''
-                    echo "Deploying to production..."
-                '''
-            }
-        }
-
-        stage('Destroy Approval') {
-            when {
-                branch 'main'
-            }
-
-            steps {
-                timeout(
-                    time: 10,
-                    unit: 'MINUTES'
-                ) {
-                    input(
-                        message: '''
-                        End of lab session.
-
-                        Destroy all infrastructure managed by Terraform?
-
-                        This will remove the provisioned
-                        Taskflow environment.
-                        ''',
-                        ok: 'Destroy Environment'
-                    )
-                }
-            }
-        }
-
-        stage('Terraform Destroy & Verify') {
-            when {
-                branch 'main'
-            }
-
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'taskflow-localstack-aws',
-                        usernameVariable: 'AWS_ACCESS_KEY_ID',
-                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
-                    ),
-                    string(
-                        credentialsId: 'taskflow-ansible-public-key',
-                        variable: 'TF_VAR_ssh_public_key'
-                    )
-                ]) {
-                    withEnv([
-                        'AWS_EC2_METADATA_DISABLED=true'
-                    ]) {
-                        sh '''
-                            set +x
-
-                            echo "========================================"
-                            echo "Terraform Destroy"
-                            echo "========================================"
-
-                            terraform \
-                                -chdir=terraform \
-                                init \
-                                -input=false \
-                                -reconfigure
-
-                            terraform \
-                                -chdir=terraform \
-                                destroy \
-                                -input=false \
-                                -auto-approve \
-                                -no-color \
-                                | tee terraform/destroy.txt
-
-                            echo "========================================"
-                            echo "Verify Terraform State"
-                            echo "========================================"
-
-                            STATE_RESOURCES="$(
-                                terraform \
-                                    -chdir=terraform \
-                                    state list
-                            )"
-
-                            if [ -n "$STATE_RESOURCES" ]; then
-                                echo "ERROR:"
-                                echo "Terraform state still contains resources:"
-                                echo "$STATE_RESOURCES"
-                                exit 1
-                            fi
-
-                            echo "SUCCESS:"
-                            echo "Terraform state contains 0 managed resources."
-
-                            echo "========================================"
-                            echo "Terraform State"
-                            echo "========================================"
-
-                            terraform \
-                                -chdir=terraform \
-                                show \
-                                -no-color
                         '''
                     }
                 }
             }
-
-            post {
-                always {
-                    archiveArtifacts(
-                        artifacts: 'terraform/destroy.txt',
-                        allowEmptyArchive: true
-                    )
-                }
-            }
         }
-
         stage('Archive Artifacts') {
             steps {
                 echo 'Preparing build artifacts...'

@@ -116,11 +116,7 @@ spec:
         limits:
           cpu: "1"
           memory: "2Gi"
-    
-      services:
-        api:
-          ports:
-            - "3000:3000"
+
   volumes:
     - name: flutter-cache
       persistentVolumeClaim:
