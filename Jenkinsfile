@@ -35,7 +35,7 @@ spec:
           value: ""
 
     - name: flutter
-      image: ghcr.io/cirruslabs/flutter:stable
+      image: taskflow-flutter-ci:lab10
       imagePullPolicy: IfNotPresent
 
       resources:
