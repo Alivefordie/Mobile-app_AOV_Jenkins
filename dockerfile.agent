@@ -1,0 +1,219 @@
+FROM jenkins/inbound-agent:latest-jdk21
+
+USER root
+
+# =========================================================
+# Base tools
+# =========================================================
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+    libatomic1 \
+    docker-cli \
+    curl \
+    ca-certificates \
+    tar \
+    gzip \
+    unzip \
+    git \
+    openssh-client \
+    gnupg \
+    lsb-release \
+    python3 \
+    python3-pip \
+    python3-venv \
+    pipx \
+    ansible \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+
+# =========================================================
+# Node.js 20 + npm
+# =========================================================
+
+ARG NODE_VERSION=20.19.5
+
+RUN curl -fsSL \
+    "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+    -o /tmp/node.tar.xz \
+    && tar -xJf /tmp/node.tar.xz \
+    -C /usr/local \
+    --strip-components=1 \
+    && rm /tmp/node.tar.xz \
+    && node --version \
+    && npm --version
+
+
+# =========================================================
+# Terraform
+# =========================================================
+
+RUN curl -fsSL https://apt.releases.hashicorp.com/gpg \
+    | gpg --dearmor \
+    -o /usr/share/keyrings/hashicorp-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
+    https://apt.releases.hashicorp.com \
+    $(. /etc/os-release && echo ${VERSION_CODENAME}) main" \
+    > /etc/apt/sources.list.d/hashicorp.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends terraform \
+    && rm -rf /var/lib/apt/lists/*
+
+
+# =========================================================
+# Ansible Lint
+# =========================================================
+
+RUN pipx install --global ansible-lint
+
+
+# =========================================================
+# tfsec
+# =========================================================
+
+ARG TFSEC_VERSION=v1.28.14
+
+RUN curl -fsSL \
+    "https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-linux-amd64" \
+    -o /usr/local/bin/tfsec \
+    && chmod +x /usr/local/bin/tfsec
+
+
+# =========================================================
+# Checkov
+# =========================================================
+
+RUN pipx install --global checkov
+
+
+# =========================================================
+# yq
+# =========================================================
+
+ARG YQ_VERSION=v4.47.2
+
+RUN curl -fsSL \
+    "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+    -o /usr/local/bin/yq \
+    && chmod +x /usr/local/bin/yq
+
+
+# =========================================================
+# Docker Compose
+# =========================================================
+
+ARG DOCKER_COMPOSE_VERSION=v5.5.0
+
+RUN mkdir -p /usr/local/lib/docker/cli-plugins \
+    && curl -fsSL \
+    "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+
+# =========================================================
+# Docker Buildx
+# =========================================================
+
+ARG BUILDX_VERSION=v0.29.1
+
+RUN mkdir -p /usr/local/lib/docker/cli-plugins \
+    && curl -fsSL \
+    "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-amd64" \
+    -o /usr/local/lib/docker/cli-plugins/docker-buildx \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+
+
+# =========================================================
+# kubectl
+# =========================================================
+
+RUN KUBECTL_VERSION="$(curl -L -s https://dl.k8s.io/release/stable.txt)" \
+    && curl -fsSL \
+    "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
+    -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl
+
+
+# =========================================================
+# Helm
+# =========================================================
+
+ARG HELM_VERSION=v3.22.0
+
+RUN curl -fsSL \
+    "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+    -o /tmp/helm.tar.gz \
+    && tar -xzf /tmp/helm.tar.gz -C /tmp \
+    && mv /tmp/linux-amd64/helm /usr/local/bin/helm \
+    && chmod +x /usr/local/bin/helm \
+    && rm -rf /tmp/helm.tar.gz /tmp/linux-amd64
+
+
+# =========================================================
+# kind
+# =========================================================
+
+ARG KIND_VERSION=v0.30.0
+
+RUN curl -fsSL \
+    "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64" \
+    -o /usr/local/bin/kind \
+    && chmod +x /usr/local/bin/kind
+
+# =========================================================
+# Cosign
+# =========================================================
+
+ARG COSIGN_VERSION=v3.0.6
+
+RUN curl -fsSL \
+    "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" \
+    -o /usr/local/bin/cosign \
+    && chmod +x /usr/local/bin/cosign \
+    && cosign version
+# =========================================================
+# Verify tools
+# =========================================================
+
+RUN java -version \
+    && node --version \
+    && npm --version \
+    && docker --version \
+    && docker buildx version \
+    && docker compose version \
+    && terraform version \
+    && ansible --version \
+    && ansible-lint --version \
+    && kubectl version --client \
+    && helm version \
+    && yq --version \
+    && kind version \
+    && git --version \
+    && ssh -V \
+    && tfsec --version \
+    && checkov --version \
+    && cosign version
+
+
+# =========================================================
+# Jenkins user
+# =========================================================
+
+USER jenkins
+
+RUN whoami \
+    && node --version \
+    && npm --version \
+    && docker --version \
+    && terraform version \
+    && ansible --version \
+    && ansible-lint --version \
+    && kubectl version --client \
+    && helm version \
+    && yq --version \
+    && kind version \
+    && tfsec --version \
+    && checkov --version \
+    && cosign version

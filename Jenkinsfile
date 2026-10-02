@@ -861,50 +861,27 @@ spec:
             }
 
             steps {
-                dir('backend') {
-                    withCredentials([
-                        file(
-                            credentialsId: 'cosign-private-key',
-                            variable: 'COSIGN_KEY_FILE'
-                        ),
-                        string(
-                            credentialsId: 'cosign-password',
-                            variable: 'COSIGN_PASSWORD'
-                        )
-                    ]) {
+                withCredentials([
+                    file(
+                        credentialsId: 'cosign-private-key',
+                        variable: 'COSIGN_KEY_FILE'
+                    ),
+                    string(
+                        credentialsId: 'cosign-password',
+                        variable: 'COSIGN_PASSWORD'
+                    )
+                ]) {
+                    dir('backend') {
                         sh '''
-                            docker rm \
-                                -f cosign-sbom-sign \
-                                || true
+                            set +x
 
-                            docker create \
-                                --name cosign-sbom-sign \
-                                --user 0 \
-                                -e COSIGN_PASSWORD="$COSIGN_PASSWORD" \
-                                ghcr.io/sigstore/cosign/cosign:latest \
-                                sign-blob \
+                            mkdir -p reports
+
+                            cosign sign-blob \
                                 --yes \
-                                --key /tmp/cosign.key \
-                                --bundle /tmp/taskflow-api.cdx.sigstore.json \
-                                /tmp/taskflow-api.cdx.json
-
-                            docker cp \
-                                reports/taskflow-api.cdx.json \
-                                cosign-sbom-sign:/tmp/taskflow-api.cdx.json
-
-                            docker cp \
-                                "$COSIGN_KEY_FILE" \
-                                cosign-sbom-sign:/tmp/cosign.key
-
-                            docker start \
-                                -a cosign-sbom-sign
-
-                            docker cp \
-                                cosign-sbom-sign:/tmp/taskflow-api.cdx.sigstore.json \
-                                reports/taskflow-api.cdx.sigstore.json
-
-                            docker rm \
-                                cosign-sbom-sign
+                                --key "$COSIGN_KEY_FILE" \
+                                --bundle reports/taskflow-api.cdx.sigstore.json \
+                                reports/taskflow-api.cdx.json
                         '''
                     }
                 }
@@ -919,12 +896,6 @@ spec:
                         ''',
                         allowEmptyArchive: true
                     )
-
-                    sh '''
-                        docker rm \
-                            -f cosign-sbom-sign \
-                            || true
-                    '''
                 }
             }
         }
@@ -935,60 +906,23 @@ spec:
             }
 
             steps {
-                dir('backend') {
-                    withCredentials([
-                        file(
-                            credentialsId: 'cosign-public-key',
-                            variable: 'COSIGN_PUB_FILE'
-                        )
-                    ]) {
+                withCredentials([
+                    file(
+                        credentialsId: 'cosign-public-key',
+                        variable: 'COSIGN_PUB_FILE'
+                    )
+                ]) {
+                    dir('backend') {
                         sh '''
-                            docker rm \
-                                -f cosign-sbom-verify \
-                                || true
-
-                            docker create \
-                                --name cosign-sbom-verify \
-                                --user 0 \
-                                ghcr.io/sigstore/cosign/cosign:latest \
-                                verify-blob \
-                                --key /tmp/cosign.pub \
-                                --bundle /tmp/taskflow-api.cdx.sigstore.json \
-                                /tmp/taskflow-api.cdx.json
-
-                            docker cp \
-                                reports/taskflow-api.cdx.json \
-                                cosign-sbom-verify:/tmp/taskflow-api.cdx.json
-
-                            docker cp \
-                                reports/taskflow-api.cdx.sigstore.json \
-                                cosign-sbom-verify:/tmp/taskflow-api.cdx.sigstore.json
-
-                            docker cp \
-                                "$COSIGN_PUB_FILE" \
-                                cosign-sbom-verify:/tmp/cosign.pub
-
-                            docker start \
-                                -a cosign-sbom-verify
-
-                            docker rm \
-                                cosign-sbom-verify
+                            cosign verify-blob \
+                                --key "$COSIGN_PUB_FILE" \
+                                --bundle reports/taskflow-api.cdx.sigstore.json \
+                                reports/taskflow-api.cdx.json
                         '''
                     }
                 }
             }
-
-            post {
-                always {
-                    sh '''
-                        docker rm \
-                            -f cosign-sbom-verify \
-                            || true
-                    '''
-                }
-            }
         }
-
         // =========================================================
         // FULL CI - OPA
         // =========================================================
