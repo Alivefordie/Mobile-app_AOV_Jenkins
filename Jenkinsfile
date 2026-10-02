@@ -141,10 +141,6 @@ spec:
     }
 
     stages {
-        // =========================================================
-        // Detect CI mode
-        // =========================================================
-
         stage('Environment') {
             steps {
                 script {
@@ -270,9 +266,6 @@ spec:
                 '''
             }
         }
-        // =========================================================
-        // FULL CI - Secret Detection
-        // =========================================================
 
         stage('Secrets Detection') {
             when {
@@ -307,11 +300,6 @@ spec:
             }
         }
 
-        // =========================================================
-        // Install
-        // Runs on FAST and FULL
-        // =========================================================
-
         stage('Install Dependencies') {
             failFast true
 
@@ -339,13 +327,6 @@ spec:
                 }
             }
         }
-
-        // =========================================================
-        // Parallel Quality & Security Gates
-        // Lab 10:
-        // Independent verification work runs concurrently.
-        // A failure aborts the remaining parallel branches.
-        // =========================================================
 
         stage('Quality & Security Gates') {
             when {
@@ -573,10 +554,6 @@ spec:
             }
         }
 
-        // =========================================================
-        // MOBILE - Quality & Security
-        // =========================================================
-
         stage('Mobile Quality & Security') {
             failFast true
 
@@ -642,10 +619,7 @@ spec:
                 }
             }
         }
-        // =========================================================
-        // Resolve Docker image
-        // FULL only
-        // =========================================================
+
         stage('SonarQube Analysis') {
             when {
                 expression {
@@ -762,11 +736,6 @@ spec:
             }
         }
 
-        // =========================================================
-        // PARALLEL BUILDS
-        // Mobile and Backend are independent
-        // =========================================================
-
         stage('Parallel Builds') {
             failFast true
 
@@ -843,10 +812,6 @@ spec:
                 }
             }
         }
-
-        // =========================================================
-        // FULL CI - Container security
-        // =========================================================
 
         stage('Image Verification') {
             failFast true
@@ -1115,19 +1080,6 @@ spec:
             }
         }
 
-        // =========================================================
-        // FULL CI - OPA
-        // =========================================================
-
-        // =========================================================
-        // Lint
-        // Runs on FAST and FULL
-        // =========================================================
-
-        // =========================================================
-        // FEATURE BRANCH FAST TEST
-        // =========================================================
-
         stage('Unit Test - Fast') {
             when {
                 expression {
@@ -1148,15 +1100,6 @@ spec:
                 }
             }
         }
-
-        // =========================================================
-        // IaC Static Validation
-        //
-        // PR / develop / main = allowed
-        // Direct feature branch = skipped
-        //
-        // Only runs when IaC files changed.
-        // =========================================================
 
         stage('IaC Verification') {
             when {
@@ -1226,13 +1169,6 @@ spec:
             }
         }
 
-        // =========================================================
-        // Terraform PLAN
-        //
-        // No PR infrastructure mutation.
-        // develop/main only.
-        // =========================================================
-
         stage('Terraform Plan') {
             when {
                 allOf {
@@ -1255,7 +1191,10 @@ spec:
                         variable: 'TF_VAR_ssh_public_key'
                     )
                 ]) {
-                    sh '''
+                    withEnv([
+                        'AWS_EC2_METADATA_DISABLED=true'
+                    ]) {
+                        sh '''
                         terraform \
                             -chdir=terraform \
                             init \
@@ -1276,6 +1215,7 @@ spec:
                             tfplan \
                             | tee terraform/plan.txt
                     '''
+                    }
                 }
 
                 archiveArtifacts(
@@ -1284,15 +1224,6 @@ spec:
                 )
             }
         }
-
-        // =========================================================
-        // MAIN ONLY infrastructure mutation
-        //
-        // This is intentionally NOT run on:
-        // feature/*
-        // PR
-        // develop
-        // =========================================================
 
         stage('Infrastructure Approval') {
             when {
@@ -1498,10 +1429,6 @@ spec:
             }
         }
 
-        // =========================================================
-        // DEVELOP ONLY
-        // =========================================================
-
         stage('Kubernetes Connectivity') {
             when {
                 branch 'develop'
@@ -1533,9 +1460,6 @@ spec:
             }
         }
 
-        // =========================================================
-        // DEVELOP - Blue / Green deployment
-        // =========================================================
         stage('Deploy — Staging') {
             when {
                 branch 'develop'
@@ -1858,7 +1782,6 @@ spec:
                     def successResponse =
                         readJSON file: 'prometheus-success.json'
 
-
                     // -----------------------------------------------------
                     // Validate Prometheus responses
                     // -----------------------------------------------------
@@ -1889,7 +1812,6 @@ spec:
                         '''
                     }
 
-
                     // -----------------------------------------------------
                     // Convert range-query samples into timestamp -> counter
                     // -----------------------------------------------------
@@ -1906,7 +1828,6 @@ spec:
                         totalSamples[timestamp] = value
                     }
 
-
                     Map<Long, Double> successSamples = [:]
 
                     successResults[0].values.each { sample ->
@@ -1918,7 +1839,6 @@ spec:
 
                         successSamples[timestamp] = value
                     }
-
 
                     // -----------------------------------------------------
                     // Reconstruct build completions from counter increases.
@@ -1946,7 +1866,6 @@ spec:
                     Double previousSuccess = null
 
                     timestamps.each { timestamp ->
-
                         double currentTotal =
                             totalSamples[timestamp]
 
@@ -1985,7 +1904,6 @@ spec:
                         previousTotal = currentTotal
                         previousSuccess = currentSuccess
                     }
-
 
                     // -----------------------------------------------------
                     // Walk backwards until exactly the latest 20 builds
@@ -2035,7 +1953,6 @@ spec:
                             group.successes
                     }
 
-
                     if (countedBuilds < requiredBuilds) {
                         error """
                         Pipeline Health Gate failed:
@@ -2045,12 +1962,10 @@ spec:
                         """.stripIndent()
                     }
 
-
                     double successRate =
                         (
                             successfulBuilds * 100.0
                         ) / requiredBuilds
-
 
                     echo """
                     ========================================
@@ -2065,7 +1980,6 @@ spec:
 
                     ========================================
                     """.stripIndent()
-
 
                     if (successRate < 90.0) {
                         error """
@@ -2100,9 +2014,6 @@ spec:
                 }
             }
         }
-        // =========================================================
-        // MAIN ONLY
-        // =========================================================
 
         stage('Deploy — Production') {
             when {
@@ -2120,12 +2031,6 @@ spec:
                 '''
             }
         }
-
-        // =========================================================
-        // Optional LAB cleanup
-        //
-        // main only
-        // =========================================================
 
         stage('Destroy Approval') {
             when {
@@ -2159,61 +2064,70 @@ spec:
 
             steps {
                 withCredentials([
+                    usernamePassword(
+                        credentialsId: 'taskflow-localstack-aws',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ),
                     string(
                         credentialsId: 'taskflow-ansible-public-key',
                         variable: 'TF_VAR_ssh_public_key'
                     )
                 ]) {
-                    sh '''
-                        echo "========================================"
-                        echo "Terraform Destroy"
-                        echo "========================================"
+                    withEnv([
+                        'AWS_EC2_METADATA_DISABLED=true'
+                    ]) {
+                        sh '''
+                            set +x
 
-                        terraform \
-                            -chdir=terraform \
-                            init \
-                            -input=false \
-                            -reconfigure
+                            echo "========================================"
+                            echo "Terraform Destroy"
+                            echo "========================================"
 
-                        terraform \
-                            -chdir=terraform \
-                            destroy \
-                            -input=false \
-                            -auto-approve \
-                            -no-color \
-                            | tee terraform/destroy.txt
-
-                        echo "========================================"
-                        echo "Verify Terraform State"
-                        echo "========================================"
-
-                        STATE_RESOURCES="$(
                             terraform \
                                 -chdir=terraform \
-                                state list
-                        )"
+                                init \
+                                -input=false \
+                                -reconfigure
 
-                        if [ -n "$STATE_RESOURCES" ]; then
-                            echo "ERROR:"
-                            echo "Terraform state still contains resources:"
+                            terraform \
+                                -chdir=terraform \
+                                destroy \
+                                -input=false \
+                                -auto-approve \
+                                -no-color \
+                                | tee terraform/destroy.txt
 
-                            echo "$STATE_RESOURCES"
+                            echo "========================================"
+                            echo "Verify Terraform State"
+                            echo "========================================"
 
-                            exit 1
-                        fi
+                            STATE_RESOURCES="$(
+                                terraform \
+                                    -chdir=terraform \
+                                    state list
+                            )"
 
-                        echo "SUCCESS:"
-                        echo "Terraform state contains 0 managed resources."
+                            if [ -n "$STATE_RESOURCES" ]; then
+                                echo "ERROR:"
+                                echo "Terraform state still contains resources:"
+                                echo "$STATE_RESOURCES"
+                                exit 1
+                            fi
 
-                        echo "========================================"
-                        echo "Terraform State"
-                        echo "========================================"
+                            echo "SUCCESS:"
+                            echo "Terraform state contains 0 managed resources."
 
-                        terraform \
-                            -chdir=terraform \
-                            show \
-                            -no-color
-                    '''
+                            echo "========================================"
+                            echo "Terraform State"
+                            echo "========================================"
+
+                            terraform \
+                                -chdir=terraform \
+                                show \
+                                -no-color
+                        '''
+                    }
                 }
             }
 
