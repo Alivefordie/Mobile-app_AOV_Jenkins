@@ -30,3 +30,13 @@ Thumbs.db
 
 #backend
 node_modules/
+ansible/inventory.ini
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+tfplan
+plan.txt

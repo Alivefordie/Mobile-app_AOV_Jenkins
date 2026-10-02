@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore known non-secret token example in backend README"
+paths = [
+  '''backend/README\.md'''
+]

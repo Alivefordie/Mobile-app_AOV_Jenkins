@@ -19,7 +19,9 @@ lerna-debug.log*
 # Tests
 /coverage
 /.nyc_output
-
+/reports
+/test-results
+/playwright-report
 # IDEs and editors
 /.idea
 .project
@@ -42,6 +44,7 @@ lerna-debug.log*
 .env.test.local
 .env.production.local
 .env.local
+taskflow-kubeconfig
 
 # temp directory
 .temp
