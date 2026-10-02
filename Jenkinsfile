@@ -62,16 +62,16 @@ pipeline {
                     CI_MODE       : ${env.CI_MODE}
                     ========================================
                     """.stripIndent()
-                }
-                env.COMMIT_SHA = sh(
-                    script: 'git rev-parse --short=7 HEAD',
-                    returnStdout: true
-                ).trim()
+                    env.COMMIT_SHA = sh(
+                        script: 'git rev-parse --short=7 HEAD',
+                        returnStdout: true
+                    ).trim()
 
-                env.COMMIT_MESSAGE = sh(
-                    script: 'git log -1 --pretty=%s',
-                    returnStdout: true
-                ).trim()
+                    env.COMMIT_MESSAGE = sh(
+                        script: 'git log -1 --pretty=%s',
+                        returnStdout: true
+                    ).trim()
+                }
                 if (env.BRANCH_NAME == 'develop') {
                     env.ARGOCD_APP = 'taskflow-staging'
                     env.DEPLOY_NAMESPACE = 'taskflow-staging'
