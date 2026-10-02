@@ -100,6 +100,27 @@ spec:
         timeoutSeconds: 2
         failureThreshold: 30
 
+    - name: playwright
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      imagePullPolicy: IfNotPresent
+
+      command:
+        - cat
+
+      tty: true
+
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+    
+      services:
+        api:
+          ports:
+            - "3000:3000"
   volumes:
     - name: flutter-cache
       persistentVolumeClaim:

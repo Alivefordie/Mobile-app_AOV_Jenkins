@@ -36,6 +36,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
+    services:
+      api:
+        ports:
+          - "3000:3000"
 volumes:
   postgres_data:

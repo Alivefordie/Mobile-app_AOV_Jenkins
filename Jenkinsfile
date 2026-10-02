@@ -106,6 +106,23 @@ spec:
         timeoutSeconds: 2
         failureThreshold: 30
 
+    - name: playwright
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      imagePullPolicy: IfNotPresent
+
+      command:
+        - cat
+
+      tty: true
+
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
+
   volumes:
     - name: flutter-cache
       persistentVolumeClaim:
@@ -896,41 +913,27 @@ spec:
 
                     steps {
                         dir('backend') {
-                            script {
-                                withEnv([
-                                    "API_IMAGE=${env.IMAGE_NAME}"
-                                ]) {
-                                    sh '''
-                                        docker compose \
-                                            down \
-                                            --remove-orphans \
-                                            || true
+                            withEnv([
+                                "API_IMAGE=${env.IMAGE_NAME}"
+                            ]) {
+                                sh '''
+                                    docker compose down --remove-orphans || true
 
-                                        docker compose \
-                                            up \
-                                            -d
+                                    docker compose up -d
 
-                                        docker compose \
-                                            ps
-                                    '''
-                                }
+                                    docker compose ps
+                                '''
                             }
+                        }
 
-                            script {
-                                docker
-                                    .image(
-                                        'mcr.microsoft.com/playwright:v1.63.0-noble'
-                                    )
-                                    .inside(
-                                        '--network backend_default'
-                                    ) {
-                                        sh '''
-                                            npm ci
+                        container('playwright') {
+                            dir('backend') {
+                                sh '''
+                                    npm ci
 
-                                            BASE_URL=http://api:3000 \
-                                                npx playwright test
-                                        '''
-                                    }
+                                    BASE_URL=http://localhost:3000 \
+                                        npx playwright test
+                                '''
                             }
                         }
                     }
@@ -965,14 +968,8 @@ spec:
                                             "API_IMAGE=${env.IMAGE_NAME}"
                                         ]) {
                                             sh '''
-                                                docker compose \
-                                                    logs api \
-                                                    || true
-
-                                                docker compose \
-                                                    down \
-                                                    --remove-orphans \
-                                                    || true
+                                                docker compose logs api || true
+                                                docker compose down --remove-orphans || true
                                             '''
                                         }
                                     }
@@ -1186,6 +1183,11 @@ spec:
 
             steps {
                 withCredentials([
+                    usernamePassword(
+                        credentialsId: 'taskflow-localstack-aws',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID',
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY'
+                    ),
                     string(
                         credentialsId: 'taskflow-ansible-public-key',
                         variable: 'TF_VAR_ssh_public_key'
