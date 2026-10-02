@@ -14,6 +14,14 @@ spec:
       image: jenkins-ci-agent:lab10
       imagePullPolicy: IfNotPresent
 
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1536Mi"
+
       command:
         - cat
 
@@ -29,6 +37,14 @@ spec:
     - name: flutter
       image: ghcr.io/cirruslabs/flutter:stable
       imagePullPolicy: IfNotPresent
+
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "3Gi"
 
       command:
         - cat
@@ -49,6 +65,14 @@ spec:
     - name: dind
       image: docker:28-dind
       imagePullPolicy: IfNotPresent
+
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1500m"
+          memory: "2Gi"
 
       securityContext:
         privileged: true
