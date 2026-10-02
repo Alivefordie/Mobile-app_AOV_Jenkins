@@ -35,6 +35,24 @@ spec:
 
       tty: true
 
+      env:
+        - name: GRADLE_USER_HOME
+          value: /cache/gradle
+
+        - name: PUB_CACHE
+          value: /cache/pub
+
+      volumeMounts:
+        - name: flutter-cache
+          mountPath: /cache
+
+    volumes:
+        - name: flutter-cache
+        persistentVolumeClaim:
+            claimName: flutter-cache
+
+      tty: true
+
     - name: dind
       image: docker:28-dind
       imagePullPolicy: IfNotPresent
@@ -590,7 +608,8 @@ spec:
                             echo "========================================"
 
                             flutter build apk \
-                                --debug
+                                --debug \
+                                -v
                         '''
                     }
                 }
