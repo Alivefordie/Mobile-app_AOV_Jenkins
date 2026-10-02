@@ -127,6 +127,16 @@ new-ver-agent: build-image remove-agent run-agent-1 run-agent-2
 	-docker network connect kind $(AGENT2)
 # 	$(MAKE) test-kube-all
 
+upload-image:
+	docker pull --platform linux/amd64 $(TARGET_IMAGE)
+	docker image save \
+		--platform linux/amd64 \
+		-o .kind-image.tar \
+		$(TARGET_IMAGE)
+	kind load image-archive .kind-image.tar --name $(CLUSTER_NAME)
+	rm -f .kind-image.tar
+#make upload-image TARGET_IMAGE=ghcr.io/google/osv-scanner TARGET_TAG=latest CLUSTER_NAME=taskflow
+#make upload-image TARGET_IMAGE=ghcr.io/google/osv-scanner:latest CLUSTER_NAME=taskflow
 
 # make update-kubeconfig
 # set AGENT1_SECRET=
