@@ -8,8 +8,10 @@ apiVersion: v1
 kind: Pod
 
 spec:
-  containers:
+  securityContext:
+    fsGroup: 1000
 
+  containers:
     - name: ci
       image: jenkins-ci-agent:lab10
       imagePullPolicy: IfNotPresent
@@ -33,6 +35,13 @@ spec:
 
         - name: DOCKER_TLS_CERTDIR
           value: ""
+
+        - name: TRIVY_CACHE_DIR
+          value: /cache/trivy
+
+      volumeMounts:
+        - name: trivy-cache
+          mountPath: /cache/trivy
 
     - name: flutter
       image: taskflow-flutter-ci:lab10
@@ -101,6 +110,10 @@ spec:
     - name: flutter-cache
       persistentVolumeClaim:
         claimName: flutter-cache
+
+    - name: trivy-cache
+      persistentVolumeClaim:
+        claimName: trivy-cache
 '''
 
             defaultContainer 'ci'
@@ -276,13 +289,10 @@ spec:
                     echo "Recent commits:"
                     git log --oneline -5
 
-                    docker run --rm \
-                        -v "$WORKSPACE:/repo" \
-                        ghcr.io/gitleaks/gitleaks:latest \
-                        git /repo \
-                        --config=/repo/.gitleaks.toml \
+                    gitleaks git . \
+                        --config=.gitleaks.toml \
                         --report-format json \
-                        --report-path /repo/reports/gitleaks.json \
+                        --report-path reports/gitleaks.json \
                         --redact \
                         --verbose
                 '''
@@ -303,10 +313,30 @@ spec:
         // Runs on FAST and FULL
         // =========================================================
 
-        stage('Install') {
-            steps {
-                dir('backend') {
-                    sh 'npm ci'
+        stage('Install Dependencies') {
+            failFast true
+
+            parallel {
+                stage('Backend Install') {
+                    steps {
+                        dir('backend') {
+                            sh 'npm ci'
+                        }
+                    }
+                }
+
+                stage('Mobile Install') {
+                    steps {
+                        container('flutter') {
+                            dir('frontend') {
+                                sh '''
+                                    flutter --version
+                                    dart --version
+                                    flutter pub get
+                                '''
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -417,11 +447,7 @@ spec:
                                     sh '''
                                         mkdir -p reports
 
-                                        docker run --rm \
-                                            -v "$PWD:/src" \
-                                            -w /src \
-                                            semgrep/semgrep:latest \
-                                            semgrep scan \
+                                        semgrep scan \
                                             --config=p/owasp-top-ten \
                                             --config=p/nodejs \
                                             --sarif \
@@ -519,26 +545,32 @@ spec:
             }
         }
 
-        // =========================================================
-        // MOBILE - Install dependencies
-        // =========================================================
-
-        stage('Mobile - Install') {
-            steps {
-                container('flutter') {
-                    dir('frontend') {
-                        sh '''
-                            echo "========================================"
-                            echo "Flutter Environment"
-                            echo "========================================"
-
-                            flutter --version
-                            dart --version
-
-                            flutter pub get
-                        '''
-                    }
+        stage('Policy Gate') {
+            when {
+                expression {
+                    env.CI_MODE == 'FULL'
                 }
+            }
+
+            steps {
+                sh '''
+                    echo "Policy violations:"
+
+                    opa eval \
+                        --data policy/security.rego \
+                        --input backend/reports/npm-audit.json \
+                        --format pretty \
+                        'data.security.deny'
+
+                    echo "Evaluating policy gate..."
+
+                    opa eval \
+                        --fail \
+                        --data policy/security.rego \
+                        --input backend/reports/npm-audit.json \
+                        --format pretty \
+                        'data.security.allow'
+                '''
             }
         }
 
@@ -602,12 +634,9 @@ spec:
 
                                 mkdir -p reports
 
-                                docker run --rm \
-                                    -v "$PWD:/src" \
-                                    ghcr.io/google/osv-scanner:latest \
-                                    scan source \
+                                osv-scanner scan source \
                                     --recursive \
-                                    /src
+                                    .
                             '''
                         }
                     }
@@ -618,6 +647,48 @@ spec:
         // Resolve Docker image
         // FULL only
         // =========================================================
+        stage('SonarQube Analysis') {
+            when {
+                expression {
+                    env.CI_MODE == 'FULL'
+                }
+            }
+
+            steps {
+                dir('backend') {
+                    withSonarQubeEnv('SonarQube') {
+                        sh '''
+                            npx @sonar/scan \
+                                -Dsonar.projectKey=taskflow-api \
+                                -Dsonar.sources=src \
+                                -Dsonar.tests=src \
+                                -Dsonar.exclusions=**/*.spec.ts \
+                                -Dsonar.test.inclusions=**/*.spec.ts \
+                                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            when {
+                expression {
+                    env.CI_MODE == 'FULL'
+                }
+            }
+
+            steps {
+                timeout(
+                    time: 5,
+                    unit: 'MINUTES'
+                ) {
+                    waitForQualityGate(
+                        abortPipeline: true
+                    )
+                }
+            }
+        }
 
         stage('Resolve Image') {
             when {
@@ -691,10 +762,6 @@ spec:
                 }
             }
         }
-        // =========================================================
-        // MOBILE - Debug APK
-        // Runs on every branch
-        // =========================================================
 
         // =========================================================
         // PARALLEL BUILDS
@@ -782,187 +849,276 @@ spec:
         // FULL CI - Container security
         // =========================================================
 
-        stage('Container Scan') {
-            when {
-                expression {
-                    env.CI_MODE == 'FULL'
+        stage('Image Verification') {
+            failFast true
+
+            parallel {
+                stage('Container Scan') {
+                    when {
+                        expression {
+                            env.CI_MODE == 'FULL'
+                        }
+                    }
+
+                    steps {
+                        dir('backend') {
+                            sh '''
+                                mkdir -p reports
+
+                                echo "========================================"
+                                echo "Trivy Cache"
+                                echo "========================================"
+
+                                echo "Cache directory: $TRIVY_CACHE_DIR"
+
+                                mkdir -p "$TRIVY_CACHE_DIR"
+
+                                du -sh "$TRIVY_CACHE_DIR" || true
+
+                                echo
+                                echo "========================================"
+                                echo "Trivy Vulnerability Report"
+                                echo "========================================"
+
+                                trivy image \
+                                    --cache-backend memory \
+                                    --image-src registry \
+                                    --insecure \
+                                    --severity HIGH,CRITICAL \
+                                    --format table \
+                                    "$IMAGE_NAME"
+
+                                echo
+                                echo "========================================"
+                                echo "Generate SARIF"
+                                echo "========================================"
+
+                                trivy image \
+                                    --cache-backend memory \
+                                    --image-src registry \
+                                    --insecure \
+                                    --exit-code 1 \
+                                    --severity HIGH,CRITICAL \
+                                    --format sarif \
+                                    --output reports/trivy-image.sarif \
+                                    "$IMAGE_NAME"
+
+                                echo
+                                echo "========================================"
+                                echo "Persistent Trivy Cache"
+                                echo "========================================"
+
+                                du -sh "$TRIVY_CACHE_DIR" || true
+                            '''
+                        }
+                    }
+
+                    post {
+                        always {
+                            archiveArtifacts(
+                                artifacts: 'backend/reports/trivy-image.sarif',
+                                allowEmptyArchive: true
+                            )
+                        }
+                    }
                 }
-            }
 
-            steps {
-                dir('backend') {
-                    sh """
-                        mkdir -p reports
+                stage('E2E') {
+                    when {
+                        expression {
+                            env.CI_MODE == 'FULL'
+                        }
+                    }
 
-                        echo "===== Trivy Vulnerability Report ====="
+                    steps {
+                        dir('backend') {
+                            script {
+                                withEnv([
+                                    "API_IMAGE=${env.IMAGE_NAME}"
+                                ]) {
+                                    sh '''
+                                        docker compose \
+                                            down \
+                                            --remove-orphans \
+                                            || true
 
-                        docker run --rm \
-                            --network host \
-                            aquasec/trivy:latest \
-                            image \
-                            --insecure \
-                            --severity HIGH,CRITICAL \
-                            --format table \
-                            ${env.IMAGE_NAME}
+                                        docker compose \
+                                            up \
+                                            -d
 
-                        docker run --rm \
-                            --network host \
-                            -v "\$PWD/reports:/reports" \
-                            aquasec/trivy:latest \
-                            image \
-                            --insecure \
-                            --exit-code 1 \
-                            --severity HIGH,CRITICAL \
-                            --format sarif \
-                            --output /reports/trivy-image.sarif \
-                            ${env.IMAGE_NAME}
-                    """
+                                        docker compose \
+                                            ps
+                                    '''
+                                }
+                            }
+
+                            script {
+                                docker
+                                    .image(
+                                        'mcr.microsoft.com/playwright:v1.63.0-noble'
+                                    )
+                                    .inside(
+                                        '--network backend_default'
+                                    ) {
+                                        sh '''
+                                            npm ci
+
+                                            BASE_URL=http://api:3000 \
+                                                npx playwright test
+                                        '''
+                                    }
+                            }
+                        }
+                    }
+
+                    post {
+                        always {
+                            dir('backend') {
+                                junit(
+                                    allowEmptyResults: true,
+                                    testResults: 'reports/e2e-junit.xml'
+                                )
+
+                                publishHTML(
+                                    target: [
+                                        reportDir: 'playwright-report',
+                                        reportFiles: 'index.html',
+                                        reportName: 'Playwright HTML Report',
+                                        keepAll: true,
+                                        alwaysLinkToLastBuild: true,
+                                        allowMissing: true
+                                    ]
+                                )
+
+                                archiveArtifacts(
+                                    artifacts: 'playwright-report/**',
+                                    allowEmptyArchive: true
+                                )
+
+                                script {
+                                    if (env.IMAGE_NAME?.trim()) {
+                                        withEnv([
+                                            "API_IMAGE=${env.IMAGE_NAME}"
+                                        ]) {
+                                            sh '''
+                                                docker compose \
+                                                    logs api \
+                                                    || true
+
+                                                docker compose \
+                                                    down \
+                                                    --remove-orphans \
+                                                    || true
+                                            '''
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-            }
 
-            post {
-                always {
-                    archiveArtifacts(
-                        artifacts: 'backend/reports/trivy-image.sarif',
-                        allowEmptyArchive: true
-                    )
-                }
-            }
-        }
+                stage('SBOM Pipeline') {
+                    when {
+                        branch 'main'
+                    }
 
-        // =========================================================
-        // MAIN ONLY - SBOM
-        // =========================================================
+                    stages {
+                        stage('Generate SBOM') {
+                            when {
+                                branch 'main'
+                            }
 
-        stage('Generate SBOM') {
-            when {
-                branch 'main'
-            }
+                            steps {
+                                dir('backend') {
+                                    sh '''
+                                    mkdir -p reports
 
-            steps {
-                dir('backend') {
-                    sh """
-                        mkdir -p reports
+                                    SYFT_REGISTRY_INSECURE_USE_HTTP=true \
+                                        syft \
+                                        "registry:$IMAGE_NAME" \
+                                        -o cyclonedx-json=reports/taskflow-api.cdx.json
+                                '''
+                                }
+                            }
+                        }
 
-                        docker run --rm \
-                            -v /var/run/docker.sock:/var/run/docker.sock \
-                            -v "\$PWD/reports:/reports" \
-                            anchore/syft:latest \
-                            docker:${env.IMAGE_NAME} \
-                            -o cyclonedx-json=/reports/taskflow-api.cdx.json
-                    """
-                }
-            }
-        }
+                        stage('Sign SBOM') {
+                            when {
+                                branch 'main'
+                            }
 
-        stage('Sign SBOM') {
-            when {
-                branch 'main'
-            }
+                            steps {
+                                withCredentials([
+                                file(
+                                    credentialsId: 'cosign-private-key',
+                                    variable: 'COSIGN_KEY_FILE'
+                                ),
+                                string(
+                                    credentialsId: 'cosign-password',
+                                    variable: 'COSIGN_PASSWORD'
+                                )
+                            ]) {
+                                    dir('backend') {
+                                        sh '''
+                                        set +x
 
-            steps {
-                withCredentials([
-                    file(
-                        credentialsId: 'cosign-private-key',
-                        variable: 'COSIGN_KEY_FILE'
-                    ),
-                    string(
-                        credentialsId: 'cosign-password',
-                        variable: 'COSIGN_PASSWORD'
-                    )
-                ]) {
-                    dir('backend') {
-                        sh '''
-                            set +x
+                                        mkdir -p reports
 
-                            mkdir -p reports
+                                        cosign sign-blob \
+                                            --yes \
+                                            --key "$COSIGN_KEY_FILE" \
+                                            --bundle reports/taskflow-api.cdx.sigstore.json \
+                                            reports/taskflow-api.cdx.json
+                                    '''
+                                    }
+                            }
+                            }
 
-                            cosign sign-blob \
-                                --yes \
-                                --key "$COSIGN_KEY_FILE" \
-                                --bundle reports/taskflow-api.cdx.sigstore.json \
-                                reports/taskflow-api.cdx.json
-                        '''
+                            post {
+                                always {
+                                    archiveArtifacts(
+                                    artifacts: '''
+                                        backend/reports/taskflow-api.cdx.json,
+                                        backend/reports/taskflow-api.cdx.sigstore.json
+                                    ''',
+                                    allowEmptyArchive: true
+                                )
+                                }
+                            }
+                        }
+
+                        stage('Verify SBOM Signature') {
+                            when {
+                                branch 'main'
+                            }
+
+                            steps {
+                                withCredentials([
+                                file(
+                                    credentialsId: 'cosign-public-key',
+                                    variable: 'COSIGN_PUB_FILE'
+                                )
+                            ]) {
+                                    dir('backend') {
+                                        sh '''
+                                        cosign verify-blob \
+                                            --key "$COSIGN_PUB_FILE" \
+                                            --bundle reports/taskflow-api.cdx.sigstore.json \
+                                            reports/taskflow-api.cdx.json
+                                    '''
+                                    }
+                            }
+                            }
+                        }
                     }
                 }
             }
-
-            post {
-                always {
-                    archiveArtifacts(
-                        artifacts: '''
-                            backend/reports/taskflow-api.cdx.json,
-                            backend/reports/taskflow-api.cdx.sigstore.json
-                        ''',
-                        allowEmptyArchive: true
-                    )
-                }
-            }
         }
 
-        stage('Verify SBOM Signature') {
-            when {
-                branch 'main'
-            }
-
-            steps {
-                withCredentials([
-                    file(
-                        credentialsId: 'cosign-public-key',
-                        variable: 'COSIGN_PUB_FILE'
-                    )
-                ]) {
-                    dir('backend') {
-                        sh '''
-                            cosign verify-blob \
-                                --key "$COSIGN_PUB_FILE" \
-                                --bundle reports/taskflow-api.cdx.sigstore.json \
-                                reports/taskflow-api.cdx.json
-                        '''
-                    }
-                }
-            }
-        }
         // =========================================================
         // FULL CI - OPA
         // =========================================================
-
-        stage('Policy Gate') {
-            when {
-                expression {
-                    env.CI_MODE == 'FULL'
-                }
-            }
-
-            steps {
-                sh '''
-                    echo "Policy violations:"
-
-                    docker run --rm \
-                        -v "$WORKSPACE:/workspace" \
-                        -w /workspace \
-                        openpolicyagent/opa:latest \
-                        eval \
-                        --data policy/security.rego \
-                        --input backend/reports/npm-audit.json \
-                        --format pretty \
-                        'data.security.deny'
-
-                    echo "Evaluating policy gate..."
-
-                    docker run --rm \
-                        -v "$WORKSPACE:/workspace" \
-                        -w /workspace \
-                        openpolicyagent/opa:latest \
-                        eval \
-                        --fail \
-                        --data policy/security.rego \
-                        --input backend/reports/npm-audit.json \
-                        --format pretty \
-                        'data.security.allow'
-                '''
-            }
-        }
 
         // =========================================================
         // Lint
@@ -1003,7 +1159,7 @@ spec:
         // Only runs when IaC files changed.
         // =========================================================
 
-        stage('IaC Lint & Validate') {
+        stage('IaC Verification') {
             when {
                 allOf {
                     expression {
@@ -1017,92 +1173,55 @@ spec:
                 }
             }
 
+            failFast true
+
             parallel {
-                stage('Terraform Lint & Validate') {
+                stage('Terraform Validate') {
+                    when {
+                        changeset 'terraform/**'
+                    }
+
                     steps {
                         sh '''
-                            echo "========================================"
-                            echo "Terraform Format Check"
-                            echo "========================================"
-
-                            terraform \
-                                -chdir=terraform \
-                                fmt \
-                                -check \
-                                -recursive
-
-                            echo "========================================"
-                            echo "Terraform Init"
-                            echo "========================================"
-
-                            terraform \
-                                -chdir=terraform \
-                                init \
-                                -backend=false
-
-                            echo "========================================"
-                            echo "Terraform Validate"
-                            echo "========================================"
-
-                            terraform \
-                                -chdir=terraform \
-                                validate
-                        '''
+                        terraform -chdir=terraform fmt -check -recursive
+                        terraform -chdir=terraform init -backend=false
+                        terraform -chdir=terraform validate
+                    '''
                     }
                 }
 
                 stage('Ansible Lint') {
+                    when {
+                        changeset 'ansible/**'
+                    }
+
                     steps {
-                        sh '''
-                            echo "========================================"
-                            echo "Ansible Lint"
-                            echo "========================================"
-
-                            ansible-lint \
-                                ansible/playbook.yml
-                        '''
+                        sh 'ansible-lint ansible/playbook.yml'
                     }
                 }
-            }
-        }
 
-        stage('IaC Security Scan') {
-            when {
-                allOf {
-                    expression {
-                        env.CI_MODE == 'FULL'
-                    }
-
-                    changeset 'terraform/**'
-                }
-            }
-
-            parallel {
                 stage('tfsec') {
-                    steps {
-                        sh '''
-                            echo "========================================"
-                            echo "Terraform Security Scan - tfsec"
-                            echo "========================================"
+                    when {
+                        changeset 'terraform/**'
+                    }
 
-                            tfsec terraform \
-                                --no-color
-                        '''
+                    steps {
+                        sh 'tfsec terraform --no-color'
                     }
                 }
 
                 stage('Checkov') {
+                    when {
+                        changeset 'terraform/**'
+                    }
+
                     steps {
                         sh '''
-                            echo "========================================"
-                            echo "Terraform Security Scan - Checkov"
-                            echo "========================================"
-
-                            checkov \
-                                --directory terraform \
-                                --framework terraform \
-                                --skip-check CKV_AWS_8,CKV_AWS_126,CKV_AWS_135,CKV2_AWS_41
-                        '''
+                        checkov \
+                            --directory terraform \
+                            --framework terraform \
+                            --skip-check CKV_AWS_8,CKV_AWS_126,CKV_AWS_135,CKV2_AWS_41
+                    '''
                     }
                 }
             }
@@ -1374,152 +1493,6 @@ spec:
                                     --private-key "$ANSIBLE_SSH_KEY" \
                                     -u "$ANSIBLE_SSH_USER"
                             '''
-                        }
-                    }
-                }
-            }
-        }
-
-        // =========================================================
-        // FULL CI - SonarQube
-        // =========================================================
-
-        stage('SonarQube Analysis') {
-            when {
-                expression {
-                    env.CI_MODE == 'FULL'
-                }
-            }
-
-            steps {
-                dir('backend') {
-                    withSonarQubeEnv('SonarQube') {
-                        sh '''
-                            npx @sonar/scan \
-                                -Dsonar.projectKey=taskflow-api \
-                                -Dsonar.sources=src \
-                                -Dsonar.tests=src \
-                                -Dsonar.exclusions=**/*.spec.ts \
-                                -Dsonar.test.inclusions=**/*.spec.ts \
-                                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Quality Gate') {
-            when {
-                expression {
-                    env.CI_MODE == 'FULL'
-                }
-            }
-
-            steps {
-                timeout(
-                    time: 5,
-                    unit: 'MINUTES'
-                ) {
-                    waitForQualityGate(
-                        abortPipeline: true
-                    )
-                }
-            }
-        }
-
-        // =========================================================
-        // FULL CI - E2E
-        // =========================================================
-
-        stage('E2E') {
-            when {
-                expression {
-                    env.CI_MODE == 'FULL'
-                }
-            }
-
-            steps {
-                dir('backend') {
-                    script {
-                        withEnv([
-                            "API_IMAGE=${env.IMAGE_NAME}"
-                        ]) {
-                            sh '''
-                                docker compose \
-                                    down \
-                                    --remove-orphans \
-                                    || true
-
-                                docker compose \
-                                    up \
-                                    -d
-
-                                docker compose \
-                                    ps
-                            '''
-                        }
-                    }
-
-                    script {
-                        docker
-                            .image(
-                                'mcr.microsoft.com/playwright:v1.63.0-noble'
-                            )
-                            .inside(
-                                '--network backend_default'
-                            ) {
-                                sh '''
-                                    npm ci
-
-                                    BASE_URL=http://api:3000 \
-                                        npx playwright test
-                                '''
-                            }
-                    }
-                }
-            }
-
-            post {
-                always {
-                    dir('backend') {
-                        junit(
-                            allowEmptyResults: true,
-                            testResults: 'reports/e2e-junit.xml'
-                        )
-
-                        publishHTML(
-                            target: [
-                                reportDir: 'playwright-report',
-                                reportFiles: 'index.html',
-                                reportName: 'Playwright HTML Report',
-                                keepAll: true,
-                                alwaysLinkToLastBuild: true,
-                                allowMissing: true
-                            ]
-                        )
-
-                        archiveArtifacts(
-                            artifacts: 'playwright-report/**',
-                            allowEmptyArchive: true
-                        )
-
-                        script {
-                            if (env.IMAGE_NAME?.trim()) {
-                                withEnv([
-                                    "API_IMAGE=${env.IMAGE_NAME}"
-                                ]) {
-                                    sh '''
-                                        docker compose \
-                                            logs api \
-                                            || true
-
-                                        docker compose \
-                                            down \
-                                            --remove-orphans \
-                                            || true
-                                    '''
-                                }
-                            }
                         }
                     }
                 }

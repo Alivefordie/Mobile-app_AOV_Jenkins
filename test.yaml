@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: Pod
+
+spec:
+  securityContext:
+    fsGroup: 1000
+
+  containers:
+    - name: ci
+      image: jenkins-ci-agent:lab10
+      imagePullPolicy: IfNotPresent
+
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1"
+          memory: "1536Mi"
+
+      command:
+        - cat
+
+      tty: true
+
+      env:
+        - name: DOCKER_HOST
+          value: tcp://localhost:2375
+
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+
+        - name: TRIVY_CACHE_DIR
+          value: /cache/trivy
+
+      volumeMounts:
+        - name: trivy-cache
+          mountPath: /cache/trivy
+
+    - name: flutter
+      image: taskflow-flutter-ci:lab10
+      imagePullPolicy: IfNotPresent
+
+      resources:
+        requests:
+          cpu: "500m"
+          memory: "1Gi"
+        limits:
+          cpu: "2"
+          memory: "5Gi"
+
+      command:
+        - cat
+
+      tty: true
+
+      env:
+        - name: GRADLE_USER_HOME
+          value: /cache/gradle
+
+        - name: PUB_CACHE
+          value: /cache/pub
+
+      volumeMounts:
+        - name: flutter-cache
+          mountPath: /cache
+
+    - name: dind
+      image: docker:28-dind
+      imagePullPolicy: IfNotPresent
+
+      resources:
+        requests:
+          cpu: "250m"
+          memory: "512Mi"
+        limits:
+          cpu: "1500m"
+          memory: "2Gi"
+
+      securityContext:
+        privileged: true
+
+      env:
+        - name: DOCKER_TLS_CERTDIR
+          value: ""
+
+      args:
+        - --host=tcp://0.0.0.0:2375
+        - --host=unix:///var/run/docker.sock
+        - --insecure-registry=registry:5000
+
+      readinessProbe:
+        exec:
+          command:
+            - docker
+            - info
+
+        initialDelaySeconds: 3
+        periodSeconds: 2
+        timeoutSeconds: 2
+        failureThreshold: 30
+
+  volumes:
+    - name: flutter-cache
+      persistentVolumeClaim:
+        claimName: flutter-cache
+
+    - name: trivy-cache
+      persistentVolumeClaim:
+        claimName: trivy-cache
