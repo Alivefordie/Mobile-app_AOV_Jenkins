@@ -882,7 +882,7 @@ spec:
 
                                 trivy image \
                                     --cache-backend memory \
-                                    --image-src registry \
+                                    --image-src remote \
                                     --insecure \
                                     --severity HIGH,CRITICAL \
                                     --format table \
