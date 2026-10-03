@@ -1225,23 +1225,32 @@ pipeline {
             }
         }
     }
+
     post {
         success {
-            emailext(
-                to: 'the78639@gmail.com',
-                subject: "SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                mimeType: 'text/html',
-                body: '${JELLY_SCRIPT,template="taskflow-ci"}'
-            )
+            withCredentials([
+                string(
+                    credentialsId: 'discord-webhook-url',
+                    variable: 'DISCORD_WEBHOOK_URL'
+                )
+            ]) {
+                sh '''
+                    python3 ci/scripts/discord_notify.py success
+                '''
+            }
         }
 
         failure {
-            emailext(
-                to: 'the78639@gmail.com',
-                subject: "FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                mimeType: 'text/html',
-                body: '${JELLY_SCRIPT,template="taskflow-ci"}'
-            )
+            withCredentials([
+                string(
+                    credentialsId: 'discord-webhook-url',
+                    variable: 'DISCORD_WEBHOOK_URL'
+                )
+            ]) {
+                sh '''
+                    python3 ci/scripts/discord_notify.py failure
+                '''
+            }
         }
     }
 }
