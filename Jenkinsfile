@@ -15,13 +15,11 @@ pipeline {
         APP_NAME = 'taskflow-api'
         NODE_ENV = 'test'
 
-        GITOPS_REPO   = 'https://github.com/Alivefordie/test-ci-cd-gitops.git'
+        GITOPS_REPO   = 'https://github.com/Pongohisut007/test-ci-cd.git'
         GITOPS_BRANCH = 'main'
         GITOPS_DIR    = 'gitops'
 
         TASKFLOW_CHART = 'taskflow-chart'
-
-        ARGOCD_NAMESPACE = 'argocd'
     }
 
     options {
@@ -36,9 +34,6 @@ pipeline {
                 script {
                     def isFeatureBranch =
                         env.BRANCH_NAME ==~ /^feature\/.+/
-
-                    def isCapstoneBranch =
-                        env.BRANCH_NAME == 'feature/lab10-capstone'
 
                     def isPullRequest =
                         env.CHANGE_ID?.trim()
@@ -58,19 +53,6 @@ pipeline {
                         script: 'git log -1 --pretty=%s',
                         returnStdout: true
                     ).trim()
-
-                    // -----------------------------
-                    // Deployment environment
-                    // -----------------------------
-                    if (env.BRANCH_NAME == 'develop') {
-                        env.ARGOCD_APP = 'taskflow-staging'
-                        env.DEPLOY_NAMESPACE = 'taskflow-staging'
-                    }
-
-                    if (env.BRANCH_NAME == 'main') {
-                        env.ARGOCD_APP = 'taskflow-production'
-                        env.DEPLOY_NAMESPACE = 'taskflow-production'
-                    }
 
                     echo """
                     ========================================
@@ -170,6 +152,10 @@ pipeline {
 
             parallel {
                 stage('Backend Install') {
+                    when {
+                        changeset 'backend/**'
+                    }
+
                     steps {
                         dir('backend') {
                             sh 'npm ci'
@@ -178,6 +164,10 @@ pipeline {
                 }
 
                 stage('Mobile Install') {
+                    when {
+                        changeset 'frontend/**'
+                    }
+
                     steps {
                         container('flutter') {
                             dir('frontend') {
@@ -195,8 +185,12 @@ pipeline {
 
         stage('Quality & Security Gates') {
             when {
-                expression {
-                    env.CI_MODE == 'FULL'
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FULL'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -392,8 +386,12 @@ pipeline {
 
         stage('Policy Gate') {
             when {
-                expression {
-                    env.CI_MODE == 'FULL'
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FULL'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -420,6 +418,9 @@ pipeline {
         }
 
         stage('Mobile Quality & Security') {
+            when {
+                changeset 'frontend/**'
+            }
             failFast true
 
             parallel {
@@ -487,8 +488,11 @@ pipeline {
 
         stage('SonarQube Analysis') {
             when {
-                expression {
-                    env.CI_MODE == 'FULL'
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FULL'
+                    }
+                    changeset 'backend/**'
                 }
             }
 
@@ -511,8 +515,12 @@ pipeline {
 
         stage('Quality Gate') {
             when {
-                expression {
-                    env.CI_MODE == 'FULL'
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FULL'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -530,8 +538,12 @@ pipeline {
 
         stage('Resolve Image') {
             when {
-                expression {
-                    env.CI_MODE == 'FULL'
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FULL'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -561,8 +573,12 @@ pipeline {
 
         stage('Verify Image Exists') {
             when {
-                expression {
-                    env.CI_MODE == 'FULL'
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FULL'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -605,22 +621,16 @@ pipeline {
             failFast true
 
             parallel {
-                // =================================================
-                // MOBILE - Debug APK
-                // Every branch
-                // =================================================
-
                 stage('Mobile - Build Debug APK') {
+                    when {
+                        changeset 'frontend/**'
+                    }
+
                     steps {
                         container('flutter') {
                             dir('frontend') {
                                 sh '''
-                                    echo "========================================"
-                                    echo "Build Debug APK"
-                                    echo "========================================"
-
-                                    flutter build apk \
-                                        --debug
+                                    flutter build apk --debug
                                 '''
                             }
                         }
@@ -635,11 +645,6 @@ pipeline {
                         }
                     }
                 }
-
-                // =================================================
-                // BACKEND - Docker Image
-                // FULL only
-                // =================================================
 
                 stage('Backend - Build Image') {
                     when {
@@ -660,18 +665,13 @@ pipeline {
 
                     steps {
                         dir('backend') {
-                            script {
-                                echo "Building image: ${env.IMAGE_NAME}"
+                            sh '''
+                                docker build \
+                                    -t "$IMAGE_NAME" \
+                                    .
 
-                                sh '''
-                                    docker build \
-                                        -t "$IMAGE_NAME" \
-                                        .
-
-                                    docker push \
-                                        "$IMAGE_NAME"
-                                '''
-                            }
+                                docker push "$IMAGE_NAME"
+                            '''
                         }
                     }
                 }
@@ -684,8 +684,12 @@ pipeline {
             parallel {
                 stage('Container Scan') {
                     when {
-                        expression {
-                            env.CI_MODE == 'FULL'
+                        allOf {
+                            expression {
+                                env.CI_MODE == 'FULL'
+                            }
+
+                            changeset 'backend/**'
                         }
                     }
 
@@ -754,8 +758,12 @@ pipeline {
 
                 stage('E2E') {
                     when {
-                        expression {
-                            env.CI_MODE == 'FULL'
+                        allOf {
+                            expression {
+                                env.CI_MODE == 'FULL'
+                            }
+
+                            changeset 'backend/**'
                         }
                     }
 
@@ -829,15 +837,19 @@ pipeline {
 
                 stage('SBOM Pipeline') {
                     when {
-                        branch 'main'
+                        allOf {
+                            branch 'main'
+
+                            expression {
+                                env.CI_MODE == 'FULL'
+                            }
+
+                            changeset 'backend/**'
+                        }
                     }
 
                     stages {
                         stage('Generate SBOM') {
-                            when {
-                                branch 'main'
-                            }
-
                             steps {
                                 dir('backend') {
                                     sh '''
@@ -853,10 +865,6 @@ pipeline {
                         }
 
                         stage('Sign SBOM') {
-                            when {
-                                branch 'main'
-                            }
-
                             steps {
                                 withCredentials([
                                 file(
@@ -898,10 +906,6 @@ pipeline {
                         }
 
                         stage('Verify SBOM Signature') {
-                            when {
-                                branch 'main'
-                            }
-
                             steps {
                                 withCredentials([
                                 file(
@@ -927,8 +931,12 @@ pipeline {
 
         stage('Unit Test - Fast') {
             when {
-                expression {
-                    env.CI_MODE == 'FAST'
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FAST'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -949,7 +957,11 @@ pipeline {
         stage('Production Approval') {
             when {
                 beforeInput true
-                branch 'main'
+
+                allOf {
+                    branch 'main'
+                    changeset 'backend/**'
+                }
             }
 
             input {
@@ -964,9 +976,13 @@ pipeline {
 
         stage('Checkout GitOps Repo') {
             when {
-                anyOf {
-                    branch 'develop'
-                    branch 'main'
+                allOf {
+                    anyOf {
+                        branch 'develop'
+                        branch 'main'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -996,9 +1012,13 @@ pipeline {
 
         stage('Lint Helm Chart') {
             when {
-                anyOf {
-                    branch 'develop'
-                    branch 'main'
+                allOf {
+                    anyOf {
+                        branch 'develop'
+                        branch 'main'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -1014,9 +1034,13 @@ pipeline {
 
         stage('Update GitOps Manifest') {
             when {
-                anyOf {
-                    branch 'develop'
-                    branch 'main'
+                allOf {
+                    anyOf {
+                        branch 'develop'
+                        branch 'main'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -1052,9 +1076,13 @@ pipeline {
 
         stage('Commit GitOps Change') {
             when {
-                anyOf {
-                    branch 'develop'
-                    branch 'main'
+                allOf {
+                    anyOf {
+                        branch 'develop'
+                        branch 'main'
+                    }
+
+                    changeset 'backend/**'
                 }
             }
 
@@ -1104,6 +1132,8 @@ pipeline {
                         branch 'main'
                     }
 
+                    changeset 'backend/**'
+
                     expression {
                         env.GITOPS_CHANGED == 'true'
                     }
@@ -1123,225 +1153,24 @@ pipeline {
                             echo "Pushing GitOps commit..."
 
                             git push \
-                              https://$GIT_USERNAME:$GIT_TOKEN@github.com/Alivefordie/test-ci-cd-gitops.git \
-                              HEAD:$GITOPS_BRANCH
+                            https://$GIT_USERNAME:$GIT_TOKEN@github.com/Alivefordie/test-ci-cd-gitops.git \
+                            HEAD:$GITOPS_BRANCH
                         '''
                     }
 
-                    echo "GitOps repo updated with tag: ${env.IMAGE_TAG}"
+                    echo """
+                    GitOps handoff completed.
+
+                    Environment : ${env.BRANCH_NAME == 'main' ? 'production' : 'staging'}
+                    Image tag   : ${env.IMAGE_TAG}
+                    GitOps SHA  : ${env.GITOPS_COMMIT}
+
+                    Argo CD will reconcile asynchronously.
+                    """.stripIndent()
                 }
             }
         }
 
-        stage('Connect to Cluster') {
-            when {
-                allOf {
-                    anyOf {
-                        branch 'develop'
-                        branch 'main'
-                    }
-
-                    expression {
-                        env.GITOPS_CHANGED == 'true'
-                    }
-                }
-            }
-
-            steps {
-                withCredentials([
-                    file(
-                        credentialsId: 'taskflow-kubeconfig',
-                        variable: 'KUBE_CONFIG_FILE'
-                    )
-                ]) {
-                    withEnv([
-                        'KUBECONFIG=$KUBE_CONFIG_FILE'
-                    ]) {
-                        sh '''
-                            echo "========================================"
-                            echo "Kubernetes / Argo CD"
-                            echo "========================================"
-
-                            kubectl cluster-info
-
-                            kubectl \
-                                -n "$ARGOCD_NAMESPACE" \
-                                get application "$ARGOCD_APP"
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Wait for Argo CD') {
-            when {
-                allOf {
-                    anyOf {
-                        branch 'develop'
-                        branch 'main'
-                    }
-
-                    expression {
-                        env.GITOPS_CHANGED == 'true'
-                    }
-                }
-            }
-
-            steps {
-                withCredentials([
-                    file(
-                        credentialsId: 'taskflow-kubeconfig',
-                        variable: 'KUBE_CONFIG_FILE'
-                    )
-                ]) {
-                    withEnv([
-                        'KUBECONFIG=$KUBE_CONFIG_FILE'
-                    ]) {
-                        timeout(time: 10, unit: 'MINUTES') {
-                            sh '''
-                                echo "Waiting for Argo CD: $ARGOCD_APP"
-
-                                while true; do
-                                    SYNC=$(kubectl \
-                                        -n "$ARGOCD_NAMESPACE" \
-                                        get application "$ARGOCD_APP" \
-                                        -o jsonpath='{.status.sync.status}')
-
-                                    HEALTH=$(kubectl \
-                                        -n "$ARGOCD_NAMESPACE" \
-                                        get application "$ARGOCD_APP" \
-                                        -o jsonpath='{.status.health.status}')
-
-                                    REVISION=$(kubectl \
-                                        -n "$ARGOCD_NAMESPACE" \
-                                        get application "$ARGOCD_APP" \
-                                        -o jsonpath='{.status.sync.revision}')
-
-                                    echo "sync=$SYNC health=$HEALTH revision=$REVISION"
-
-                                    echo "Expected revision: $GITOPS_COMMIT"
-                                    echo "Actual revision  : $REVISION"
-                                    echo "sync=$SYNC health=$HEALTH"
-
-                                    if [ "$REVISION" = "$GITOPS_COMMIT" ] &&
-                                    [ "$SYNC" = "Synced" ] &&
-                                    [ "$HEALTH" = "Healthy" ]; then
-
-                                        echo "Argo CD deployed expected GitOps revision."
-                                        break
-                                    fi
-
-                                    sleep 5
-                                done
-                            '''
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Verify Deployment') {
-            when {
-                allOf {
-                    anyOf {
-                        branch 'develop'
-                        branch 'main'
-                    }
-
-                    expression {
-                        env.GITOPS_CHANGED == 'true'
-                    }
-                }
-            }
-
-            steps {
-                withCredentials([
-                    file(
-                        credentialsId: 'taskflow-kubeconfig',
-                        variable: 'KUBE_CONFIG_FILE'
-                    )
-                ]) {
-                    withEnv([
-                        'KUBECONFIG=$KUBE_CONFIG_FILE'
-                    ]) {
-                        sh '''
-                            echo "========================================"
-                            echo "Deployment Verification"
-                            echo "========================================"
-
-                            kubectl \
-                                -n "$DEPLOY_NAMESPACE" \
-                                get pods
-
-                            echo
-
-                            kubectl \
-                                -n "$DEPLOY_NAMESPACE" \
-                                get svc
-
-                            echo
-
-                            kubectl \
-                                -n "$DEPLOY_NAMESPACE" \
-                                get deployment \
-                                -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[*].image
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Smoke Test') {
-            when {
-                allOf {
-                    anyOf {
-                        branch 'develop'
-                        branch 'main'
-                    }
-
-                    expression {
-                        env.GITOPS_CHANGED == 'true'
-                    }
-                }
-            }
-
-            steps {
-                withCredentials([
-                    file(
-                        credentialsId: 'taskflow-kubeconfig',
-                        variable: 'KUBE_CONFIG_FILE'
-                    )
-                ]) {
-                    withEnv([
-                        'KUBECONFIG=$KUBE_CONFIG_FILE'
-                    ]) {
-                        sh '''
-                            kubectl \
-                                -n "$DEPLOY_NAMESPACE" \
-                                port-forward \
-                                service/taskflow-api \
-                                18081:3000 \
-                                >/tmp/taskflow-port-forward.log 2>&1 &
-
-                            PF_PID=$!
-
-                            trap 'kill $PF_PID 2>/dev/null || true' EXIT
-
-                            sleep 3
-
-                            curl \
-                                --fail \
-                                --retry 5 \
-                                --retry-delay 2 \
-                                http://127.0.0.1:18081/health
-
-                            kill "$PF_PID" 2>/dev/null || true
-                            trap - EXIT
-                        '''
-                    }
-                }
-            }
-        }
         stage('Archive Artifacts') {
             steps {
                 echo 'Preparing build artifacts...'
