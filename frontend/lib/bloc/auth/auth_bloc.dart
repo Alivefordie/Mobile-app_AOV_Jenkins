@@ -4,6 +4,7 @@ import 'package:flutter_application_1/repositories/auth_repository.dart';
 import 'package:flutter_application_1/repositories/token_storage.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+//
 // เขียน token + userId ลงเครื่องให้เรียบร้อยก่อน emit AuthAuthenticated
 // หน้า login/register ถึงสั่งให้ตะกร้ากับหัวใจโหลดใหม่ได้ทันทีโดยอ่านเจอของคนใหม่
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
