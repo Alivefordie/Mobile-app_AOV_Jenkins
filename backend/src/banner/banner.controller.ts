@@ -13,7 +13,7 @@ import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
 import { Banner } from './entities/banner.entity';
 //วว
-
+//
 @Controller('banners')
 export class BannerController {
   constructor(private readonly bannerService: BannerService) {}
