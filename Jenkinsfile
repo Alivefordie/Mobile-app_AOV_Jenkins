@@ -1023,8 +1023,14 @@ pipeline {
             steps {
                 dir("${GITOPS_DIR}") {
                     sh '''
-                        echo "Lint Taskflow chart..."
-                        helm lint "$TASKFLOW_CHART"
+                        echo "Lint staging..."
+                        helm lint "$TASKFLOW_CHART" \
+                            -f "$TASKFLOW_CHART/values-staging.yaml"
+
+                        echo
+                        echo "Lint production..."
+                        helm lint "$TASKFLOW_CHART" \
+                            -f "$TASKFLOW_CHART/values-production.yaml"
                     '''
                 }
             }
