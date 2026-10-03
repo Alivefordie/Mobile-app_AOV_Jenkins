@@ -712,7 +712,7 @@ pipeline {
                                 echo "========================================"
 
                                 trivy image \
-                                    --cache-backend memory \
+                                    --cache-dir "$TRIVY_CACHE_DIR" \
                                     --image-src remote \
                                     --insecure \
                                     --severity HIGH,CRITICAL \
@@ -725,7 +725,7 @@ pipeline {
                                 echo "========================================"
 
                                 trivy image \
-                                    --cache-backend memory \
+                                    --cache-dir "$TRIVY_CACHE_DIR" \
                                     --image-src remote \
                                     --insecure \
                                     --exit-code 1 \
@@ -1154,15 +1154,31 @@ pipeline {
                         )
                     ]) {
                         sh '''
-                            echo "Pushing GitOps commit..."
+                            set -e
+
+                            echo "Preparing GitOps push..."
 
                             AUTH_REPO=$(echo "$GITOPS_REPO" | \
-                            sed "s#https://#https://$GIT_USERNAME:$GIT_TOKEN@#")
+                                sed "s#https://#https://$GIT_USERNAME:$GIT_TOKEN@#")
 
-                            git push \
-                            "$AUTH_REPO" \
-                            HEAD:$GITOPS_BRANCH
+                            git remote set-url origin "$AUTH_REPO"
+
+                            echo "Fetching latest GitOps branch..."
+                            git fetch origin "$GITOPS_BRANCH"
+
+                            echo "Rebasing on latest origin/$GITOPS_BRANCH..."
+                            git rebase "origin/$GITOPS_BRANCH"
+
+                            echo "Pushing GitOps commit..."
+                            git push origin "HEAD:$GITOPS_BRANCH"
                         '''
+                    }
+
+                    script {
+                        env.GITOPS_COMMIT = sh(
+                            script: 'git rev-parse HEAD',
+                            returnStdout: true
+                        ).trim()
                     }
 
                     echo """

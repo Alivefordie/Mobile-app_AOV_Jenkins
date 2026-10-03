@@ -7,7 +7,7 @@ spec:
 
   containers:
     - name: ci
-      image: jenkins-ci-agent:lab10
+      image: jenkins-ci-agent:latest
       imagePullPolicy: IfNotPresent
 
       resources:
@@ -38,7 +38,7 @@ spec:
           mountPath: /cache/trivy
 
     - name: flutter
-      image: taskflow-flutter-ci:lab10
+      image: jenkins-flutter-ci:latest
       imagePullPolicy: IfNotPresent
 
       resources:

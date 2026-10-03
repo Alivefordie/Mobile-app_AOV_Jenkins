@@ -21,7 +21,11 @@ AGENT1_WORK_VOLUME ?= jenkins-agent-work
 	remove-agent \
 	run-agent-1 \
 	run-agent-2 \
-	new-ver-agent
+	new-ver-agent \
+	kind-agent \
+	build-images \
+	build-agent \
+	build-flutter
 
 
 # ==================================================
@@ -142,3 +146,27 @@ upload-image:
 # set AGENT1_SECRET=
 # set AGENT2_SECRET=
 # make new-ver-agent
+kind-agent: load-agent load-flutter
+
+# kind-agent: build-images
+# 	kind load docker-image jenkins-ci-agent:latest --name $(CLUSTER_NAME)
+# 	kind load docker-image jenkins-flutter-ci:latest --name $(CLUSTER_NAME)
+build-agent:
+	docker build \
+		-t jenkins-ci-agent:latest \
+		-f dockerfile.agent \
+		.
+
+build-flutter:
+	docker build \
+		-t jenkins-flutter-ci:latest \
+		-f dockerfile.flutter \
+		.
+
+load-agent: build-agent
+	kind load docker-image jenkins-ci-agent:latest --name $(CLUSTER_NAME)
+
+load-flutter: build-flutter
+	kind load docker-image jenkins-flutter-ci:latest --name $(CLUSTER_NAME)
+
+# make -j2 kind-agent
