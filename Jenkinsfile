@@ -105,6 +105,7 @@ pipeline {
                     syft version
                     cosign version
                     osv-scanner --version
+                    sonar-scanner --version
 
                     git --version
                     curl --version
@@ -490,6 +491,7 @@ pipeline {
                     expression {
                         env.CI_MODE == 'FULL'
                     }
+
                     changeset 'backend/**'
                 }
             }
@@ -498,7 +500,7 @@ pipeline {
                 dir('backend') {
                     withSonarQubeEnv('SonarQube') {
                         sh '''
-                            npx @sonar/scan \
+                            sonar-scanner \
                                 -Dsonar.projectKey=taskflow-api \
                                 -Dsonar.sources=src \
                                 -Dsonar.tests=src \
