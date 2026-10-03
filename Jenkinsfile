@@ -65,8 +65,6 @@ pipeline {
                     CHANGE_BRANCH    : ${env.CHANGE_BRANCH ?: '-'}
                     CHANGE_TARGET    : ${env.CHANGE_TARGET ?: '-'}
                     CI_MODE          : ${env.CI_MODE}
-                    ARGOCD_APP       : ${env.ARGOCD_APP ?: '-'}
-                    DEPLOY_NAMESPACE : ${env.DEPLOY_NAMESPACE ?: '-'}
                     COMMIT_SHA       : ${env.COMMIT_SHA}
                     ========================================
                     """.stripIndent()
@@ -79,7 +77,7 @@ pipeline {
             }
         }
 
-        stage('Kubernetes Dynamic Agent') {
+        stage('CI Agent Tools') {
             when {
                 expression {
                     env.BRANCH_NAME ==~ /^feature\/.+/ &&
@@ -89,13 +87,16 @@ pipeline {
 
             steps {
                 sh '''
-                    echo "===== Kubernetes ====="
+                    echo "===== CI Tools ====="
 
-                    kubectl version --client
+                    node --version
+                    npm --version
+                    docker --version
+                    docker compose version
+                    docker buildx version
+
                     helm version
-
-                    echo
-                    echo "===== Security ====="
+                    yq --version
 
                     gitleaks version
                     semgrep --version
@@ -103,11 +104,8 @@ pipeline {
                     trivy --version
                     syft version
                     cosign version
+                    osv-scanner --version
 
-                    echo
-                    echo "===== Utilities ====="
-
-                    yq --version
                     git --version
                     curl --version
                 '''
@@ -1160,20 +1158,15 @@ pipeline {
                         sh '''
                             set -e
 
-                            echo "Preparing GitOps push..."
-
                             AUTH_REPO=$(echo "$GITOPS_REPO" | \
                                 sed "s#https://#https://$GIT_USERNAME:$GIT_TOKEN@#")
 
                             git remote set-url origin "$AUTH_REPO"
 
-                            echo "Fetching latest GitOps branch..."
                             git fetch origin "$GITOPS_BRANCH"
 
-                            echo "Rebasing on latest origin/$GITOPS_BRANCH..."
                             git rebase "origin/$GITOPS_BRANCH"
 
-                            echo "Pushing GitOps commit..."
                             git push origin "HEAD:$GITOPS_BRANCH"
                         '''
                     }
