@@ -653,12 +653,10 @@ pipeline {
                                 env.CI_MODE == 'FULL'
                             }
 
-                            anyOf {
-                                changeset 'backend/**'
+                            changeset 'backend/**'
 
-                                expression {
-                                    env.NEED_IMAGE_BUILD == 'true'
-                                }
+                            expression {
+                                env.NEED_IMAGE_BUILD == 'true'
                             }
                         }
                     }
@@ -1152,8 +1150,11 @@ pipeline {
                         sh '''
                             echo "Pushing GitOps commit..."
 
+                            AUTH_REPO=$(echo "$GITOPS_REPO" | \
+                            sed "s#https://#https://$GIT_USERNAME:$GIT_TOKEN@#")
+
                             git push \
-                            https://$GIT_USERNAME:$GIT_TOKEN@github.com/Alivefordie/test-ci-cd-gitops.git \
+                            "$AUTH_REPO" \
                             HEAD:$GITOPS_BRANCH
                         '''
                     }

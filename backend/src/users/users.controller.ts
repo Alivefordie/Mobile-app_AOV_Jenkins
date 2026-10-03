@@ -28,6 +28,7 @@ export class UsersController {
   ): Promise<UserProfileResponse> {
     return this.usersService.findProfile(id);
   }
+  //
 
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<User> {
