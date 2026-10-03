@@ -954,20 +954,24 @@ pipeline {
 
         stage('Production Approval') {
             when {
-                beforeInput true
-
                 allOf {
                     branch 'main'
                     changeset 'backend/**'
                 }
             }
 
-            input {
-                message "Deploy ${env.IMAGE_NAME} to production?"
-                ok 'Deploy'
-            }
-
             steps {
+                script {
+                    if (!env.IMAGE_NAME?.trim()) {
+                        error 'IMAGE_NAME is not set before production approval.'
+                    }
+
+                    input(
+                        message: "Deploy ${env.IMAGE_NAME} to production?",
+                        ok: 'Deploy'
+                    )
+                }
+
                 echo 'Production deployment approved.'
             }
         }
