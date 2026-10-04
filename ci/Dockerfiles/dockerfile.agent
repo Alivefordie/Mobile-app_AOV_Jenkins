@@ -1,0 +1,284 @@
+# syntax=docker/dockerfile:1.7
+
+ARG JENKINS_BASE_IMAGE
+ARG JENKINS_BASE_DIGEST
+
+FROM ${JENKINS_BASE_IMAGE}@${JENKINS_BASE_DIGEST}
+
+USER root
+
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+
+
+# =========================================================
+# Base packages
+# =========================================================
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends \
+    libatomic1 \
+    docker-cli \
+    curl \
+    ca-certificates \
+    tar \
+    gzip \
+    xz-utils \
+    unzip \
+    git \
+    python3 \
+    python3-pip \
+    python3-venv \
+    pipx
+
+# =========================================================
+# Node.js
+# =========================================================
+
+ARG NODE_VERSION
+ARG NODE_SHA256
+
+RUN --mount=type=cache,id=ci-tools,target=/var/cache/ci-tools,sharing=locked \
+    FILE="/var/cache/ci-tools/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+    && if [[ ! -f "$FILE" ]]; then \
+    curl --fail --location \
+    --retry 3 \
+    --retry-delay 2 \
+    "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+    -o "$FILE"; \
+    fi \
+    && test -n "${NODE_SHA256}" \
+    && echo "${NODE_SHA256}  ${FILE}" | sha256sum -c - \
+    && tar -xJf "$FILE" \
+    -C /usr/local \
+    --strip-components=1
+
+
+# =========================================================
+# Standalone binaries
+# =========================================================
+
+ARG YQ_VERSION
+ARG YQ_SHA256
+
+ARG COSIGN_VERSION
+ARG COSIGN_SHA256
+
+ARG OPA_VERSION
+ARG OPA_SHA256
+
+ARG OSV_SCANNER_VERSION
+ARG OSV_SCANNER_SHA256
+
+RUN --mount=type=cache,id=ci-tools,target=/var/cache/ci-tools,sharing=locked \
+    \
+    YQ_FILE="/var/cache/ci-tools/yq-${YQ_VERSION}-linux-amd64" \
+    && if [[ ! -f "$YQ_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" \
+    -o "$YQ_FILE"; \
+    fi \
+    && echo "${YQ_SHA256}  ${YQ_FILE}" | sha256sum -c - \
+    && install -m 0755 "$YQ_FILE" /usr/local/bin/yq \
+    \
+    && COSIGN_FILE="/var/cache/ci-tools/cosign-${COSIGN_VERSION}-linux-amd64" \
+    && if [[ ! -f "$COSIGN_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" \
+    -o "$COSIGN_FILE"; \
+    fi \
+    && echo "${COSIGN_SHA256}  ${COSIGN_FILE}" | sha256sum -c - \
+    && install -m 0755 "$COSIGN_FILE" /usr/local/bin/cosign \
+    \
+    && OPA_FILE="/var/cache/ci-tools/opa-${OPA_VERSION}-linux-amd64-static" \
+    && if [[ ! -f "$OPA_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://github.com/open-policy-agent/opa/releases/download/v${OPA_VERSION}/opa_linux_amd64_static" \
+    -o "$OPA_FILE"; \
+    fi \
+    && echo "${OPA_SHA256}  ${OPA_FILE}" | sha256sum -c - \
+    && install -m 0755 "$OPA_FILE" /usr/local/bin/opa \
+    \
+    && OSV_FILE="/var/cache/ci-tools/osv-scanner-${OSV_SCANNER_VERSION}-linux-amd64" \
+    && if [[ ! -f "$OSV_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64" \
+    -o "$OSV_FILE"; \
+    fi \
+    && echo "${OSV_SCANNER_SHA256}  ${OSV_FILE}" | sha256sum -c - \
+    && install -m 0755 "$OSV_FILE" /usr/local/bin/osv-scanner
+
+
+# =========================================================
+# Archive-based tools
+# =========================================================
+
+ARG HELM_VERSION
+ARG HELM_SHA256
+
+ARG TRIVY_VERSION
+ARG TRIVY_SHA256
+
+ARG SYFT_VERSION
+ARG SYFT_SHA256
+
+ARG GITLEAKS_VERSION
+ARG GITLEAKS_SHA256
+
+RUN --mount=type=cache,id=ci-tools,target=/var/cache/ci-tools,sharing=locked \
+    \
+    HELM_FILE="/var/cache/ci-tools/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+    && if [[ ! -f "$HELM_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+    -o "$HELM_FILE"; \
+    fi \
+    && echo "${HELM_SHA256}  ${HELM_FILE}" | sha256sum -c - \
+    && rm -rf /tmp/linux-amd64 \
+    && tar -xzf "$HELM_FILE" -C /tmp \
+    && install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm \
+    && rm -rf /tmp/linux-amd64 \
+    \
+    && TRIVY_FILE="/var/cache/ci-tools/trivy-${TRIVY_VERSION}-linux-amd64.tar.gz" \
+    && if [[ ! -f "$TRIVY_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+    -o "$TRIVY_FILE"; \
+    fi \
+    && echo "${TRIVY_SHA256}  ${TRIVY_FILE}" | sha256sum -c - \
+    && tar -xzf "$TRIVY_FILE" -C /tmp trivy \
+    && install -m 0755 /tmp/trivy /usr/local/bin/trivy \
+    && rm -f /tmp/trivy \
+    \
+    && SYFT_FILE="/var/cache/ci-tools/syft-${SYFT_VERSION}-linux-amd64.tar.gz" \
+    && if [[ ! -f "$SYFT_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+    -o "$SYFT_FILE"; \
+    fi \
+    && echo "${SYFT_SHA256}  ${SYFT_FILE}" | sha256sum -c - \
+    && tar -xzf "$SYFT_FILE" -C /tmp syft \
+    && install -m 0755 /tmp/syft /usr/local/bin/syft \
+    && rm -f /tmp/syft \
+    \
+    && GITLEAKS_FILE="/var/cache/ci-tools/gitleaks-${GITLEAKS_VERSION}-linux-x64.tar.gz" \
+    && if [[ ! -f "$GITLEAKS_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+    -o "$GITLEAKS_FILE"; \
+    fi \
+    && echo "${GITLEAKS_SHA256}  ${GITLEAKS_FILE}" | sha256sum -c - \
+    && tar -xzf "$GITLEAKS_FILE" -C /tmp gitleaks \
+    && install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks \
+    && rm -f /tmp/gitleaks
+
+
+# =========================================================
+# Docker CLI plugins
+# =========================================================
+
+ARG DOCKER_COMPOSE_VERSION
+ARG DOCKER_COMPOSE_SHA256
+
+ARG BUILDX_VERSION
+ARG BUILDX_SHA256
+
+RUN --mount=type=cache,id=ci-tools,target=/var/cache/ci-tools,sharing=locked \
+    mkdir -p /usr/local/lib/docker/cli-plugins \
+    \
+    && COMPOSE_FILE="/var/cache/ci-tools/docker-compose-${DOCKER_COMPOSE_VERSION}-linux-x86_64" \
+    && if [[ ! -f "$COMPOSE_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+    -o "$COMPOSE_FILE"; \
+    fi \
+    && echo "${DOCKER_COMPOSE_SHA256}  ${COMPOSE_FILE}" | sha256sum -c - \
+    && install -m 0755 \
+    "$COMPOSE_FILE" \
+    /usr/local/lib/docker/cli-plugins/docker-compose \
+    \
+    && BUILDX_FILE="/var/cache/ci-tools/docker-buildx-${BUILDX_VERSION}-linux-amd64" \
+    && if [[ ! -f "$BUILDX_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://github.com/docker/buildx/releases/download/${BUILDX_VERSION}/buildx-${BUILDX_VERSION}.linux-amd64" \
+    -o "$BUILDX_FILE"; \
+    fi \
+    && echo "${BUILDX_SHA256}  ${BUILDX_FILE}" | sha256sum -c - \
+    && install -m 0755 \
+    "$BUILDX_FILE" \
+    /usr/local/lib/docker/cli-plugins/docker-buildx
+
+
+# =========================================================
+# Semgrep
+# =========================================================
+
+ARG SEMGREP_VERSION
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pipx install --global "semgrep==${SEMGREP_VERSION}"
+
+# =========================================================
+# SonarScanner CLI
+# =========================================================
+
+ARG SONAR_SCANNER_VERSION
+ARG SONAR_SCANNER_SHA256
+
+RUN --mount=type=cache,id=ci-tools,target=/var/cache/ci-tools,sharing=locked \
+    SONAR_FILE="/var/cache/ci-tools/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64.zip" \
+    && if [[ ! -f "$SONAR_FILE" ]]; then \
+    curl --fail --location --retry 3 \
+    "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip" \
+    -o "$SONAR_FILE"; \
+    fi \
+    && echo "${SONAR_SCANNER_SHA256}  ${SONAR_FILE}" | sha256sum -c - \
+    && rm -rf \
+    /opt/sonar-scanner \
+    "/opt/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64" \
+    && unzip -q "$SONAR_FILE" -d /opt \
+    && mv \
+    "/opt/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64" \
+    /opt/sonar-scanner \
+    && ln -sf \
+    /opt/sonar-scanner/bin/sonar-scanner \
+    /usr/local/bin/sonar-scanner
+
+
+# =========================================================
+# Final cleanup
+# =========================================================
+
+RUN rm -rf /tmp/* /var/tmp/*
+
+# =========================================================
+# Jenkins runtime user
+# =========================================================
+
+USER jenkins
+
+
+# =========================================================
+# Verify tools as actual Jenkins user
+# =========================================================
+
+RUN echo "===== CI Agent Tools =====" \
+    && whoami \
+    && java -version \
+    && node --version \
+    && npm --version \
+    && docker --version \
+    && docker compose version \
+    && docker buildx version \
+    && helm version \
+    && yq --version \
+    && git --version \
+    && cosign version \
+    && trivy --version \
+    && syft version \
+    && opa version \
+    && gitleaks version \
+    && osv-scanner --version \
+    && semgrep --version \
+    && sonar-scanner --version

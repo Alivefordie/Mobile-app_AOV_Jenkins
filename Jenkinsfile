@@ -77,42 +77,6 @@ pipeline {
             }
         }
 
-        stage('CI Agent Tools') {
-            when {
-                expression {
-                    env.BRANCH_NAME ==~ /^feature\/.+/ &&
-                    !env.CHANGE_ID?.trim()
-                }
-            }
-
-            steps {
-                sh '''
-                    echo "===== CI Tools ====="
-
-                    node --version
-                    npm --version
-                    docker --version
-                    docker compose version
-                    docker buildx version
-
-                    helm version
-                    yq --version
-
-                    gitleaks version
-                    semgrep --version
-                    opa version
-                    trivy --version
-                    syft version
-                    cosign version
-                    osv-scanner --version
-                    sonar-scanner --version
-
-                    git --version
-                    curl --version
-                '''
-            }
-        }
-
         stage('Secrets Detection') {
             when {
                 expression {
@@ -157,7 +121,12 @@ pipeline {
 
                     steps {
                         dir('backend') {
-                            sh 'npm ci'
+                            sh '''
+                                npm ci \
+                                    --prefer-offline \
+                                    --no-audit \
+                                    --fund=false
+                            '''
                         }
                     }
                 }
@@ -182,7 +151,7 @@ pipeline {
             }
         }
 
-        stage('Quality & Security Gates') {
+        stage('Quality & Security Gates - Light') {
             when {
                 allOf {
                     expression {
@@ -196,10 +165,6 @@ pipeline {
             failFast true
 
             parallel {
-                // =================================================
-                // Lint
-                // =================================================
-
                 stage('Lint') {
                     steps {
                         dir('backend') {
@@ -208,108 +173,22 @@ pipeline {
                     }
                 }
 
-                // =================================================
-                // Unit Test
-                // =================================================
-
-                stage('Unit Test + Coverage') {
+                stage('ESLint Security') {
                     steps {
                         dir('backend') {
                             sh '''
-                                npm test -- \
-                                    --coverage \
-                                    --reporters=jest-junit
+                                mkdir -p reports
+
+                                npx eslint \
+                                    --plugin security \
+                                    src/ \
+                                    --rule 'prettier/prettier: off' \
+                                    -f @microsoft/eslint-formatter-sarif \
+                                    -o reports/eslint.sarif
                             '''
                         }
                     }
-
-                    post {
-                        always {
-                            dir('backend') {
-                                junit(
-                                    allowEmptyResults: true,
-                                    testResults: 'reports/junit.xml'
-                                )
-
-                                recordCoverage(
-                                    tools: [[
-                                        parser: 'COBERTURA',
-                                        pattern: 'coverage/cobertura-coverage.xml'
-                                    ]]
-                                )
-                            }
-                        }
-                    }
                 }
-
-                // =================================================
-                // SAST
-                // =================================================
-
-                stage('SAST') {
-                    stages {
-                        stage('ESLint Security') {
-                            steps {
-                                dir('backend') {
-                                    sh '''
-                                        mkdir -p reports
-
-                                        npx eslint \
-                                            --plugin security \
-                                            src/ \
-                                            --rule 'prettier/prettier: off' \
-                                            -f @microsoft/eslint-formatter-sarif \
-                                            -o reports/eslint.sarif
-
-                                        npx eslint \
-                                            --plugin security \
-                                            src/ \
-                                            --rule 'prettier/prettier: off'
-                                    '''
-                                }
-                            }
-
-                            post {
-                                always {
-                                    archiveArtifacts(
-                                        artifacts: 'backend/reports/eslint.sarif',
-                                        allowEmptyArchive: true
-                                    )
-                                }
-                            }
-                        }
-
-                        stage('Semgrep') {
-                            steps {
-                                dir('backend') {
-                                    sh '''
-                                        mkdir -p reports
-
-                                        semgrep scan \
-                                            --config=p/owasp-top-ten \
-                                            --config=p/nodejs \
-                                            --sarif \
-                                            --output=reports/semgrep.sarif \
-                                            .
-                                    '''
-                                }
-                            }
-
-                            post {
-                                always {
-                                    archiveArtifacts(
-                                        artifacts: 'backend/reports/semgrep.sarif',
-                                        allowEmptyArchive: true
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // =================================================
-                // SCA
-                // =================================================
 
                 stage('SCA - npm audit') {
                     steps {
@@ -324,8 +203,7 @@ pipeline {
                                         > reports/npm-audit.json || true
                                 '''
 
-                                def audit =
-                                    readJSON file: 'reports/npm-audit.json'
+                                def audit = readJSON file: 'reports/npm-audit.json'
 
                                 def vulnerabilities =
                                     audit.metadata?.vulnerabilities ?: [:]
@@ -383,6 +261,78 @@ pipeline {
             }
         }
 
+        stage('Quality & Security Gates - Heavy') {
+            when {
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FULL'
+                    }
+
+                    changeset 'backend/**'
+                }
+            }
+
+            failFast true
+
+            parallel {
+                stage('Unit Test + Coverage') {
+                    steps {
+                        dir('backend') {
+                            sh '''
+                                npm test -- \
+                                    --coverage \
+                                    --reporters=jest-junit
+                            '''
+                        }
+                    }
+
+                    post {
+                        always {
+                            dir('backend') {
+                                junit(
+                                    allowEmptyResults: true,
+                                    testResults: 'reports/junit.xml'
+                                )
+
+                                recordCoverage(
+                                    tools: [[
+                                        parser: 'COBERTURA',
+                                        pattern: 'coverage/cobertura-coverage.xml'
+                                    ]]
+                                )
+                            }
+                        }
+                    }
+                }
+
+                stage('Semgrep') {
+                    steps {
+                        dir('backend') {
+                            sh '''
+                                mkdir -p reports
+
+                                semgrep scan \
+                                    --config=p/owasp-top-ten \
+                                    --config=p/nodejs \
+                                    --sarif \
+                                    --output=reports/semgrep.sarif \
+                                    .
+                            '''
+                        }
+                    }
+
+                    post {
+                        always {
+                            archiveArtifacts(
+                                artifacts: 'backend/reports/semgrep.sarif',
+                                allowEmptyArchive: true
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         stage('Policy Gate') {
             when {
                 allOf {
@@ -418,8 +368,15 @@ pipeline {
 
         stage('Mobile Quality & Security') {
             when {
-                changeset 'frontend/**'
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FULL'
+                    }
+
+                    changeset 'frontend/**'
+                }
             }
+
             failFast true
 
             parallel {
@@ -427,13 +384,7 @@ pipeline {
                     steps {
                         container('flutter') {
                             dir('frontend') {
-                                sh '''
-                                    echo "========================================"
-                                    echo "Flutter Analyze"
-                                    echo "========================================"
-
-                                    flutter analyze
-                                '''
+                                sh 'flutter analyze'
                             }
                         }
                     }
@@ -443,14 +394,7 @@ pipeline {
                     steps {
                         container('flutter') {
                             dir('frontend') {
-                                sh '''
-                                    echo "========================================"
-                                    echo "Flutter Test"
-                                    echo "========================================"
-
-                                    flutter test \
-                                        --coverage
-                                '''
+                                sh 'flutter test --coverage'
                             }
                         }
                     }
@@ -469,17 +413,34 @@ pipeline {
                     steps {
                         dir('frontend') {
                             sh '''
-                                echo "========================================"
-                                echo "OSV Scanner"
-                                echo "========================================"
-
-                                mkdir -p reports
-
                                 osv-scanner scan source \
                                     --recursive \
                                     .
                             '''
                         }
+                    }
+                }
+            }
+        }
+
+        stage('Mobile - Fast') {
+            when {
+                allOf {
+                    expression {
+                        env.CI_MODE == 'FAST'
+                    }
+
+                    changeset 'frontend/**'
+                }
+            }
+
+            steps {
+                container('flutter') {
+                    dir('frontend') {
+                        sh '''
+                            flutter analyze
+                            flutter test
+                        '''
                     }
                 }
             }
@@ -623,15 +584,19 @@ pipeline {
             parallel {
                 stage('Mobile - Build Debug APK') {
                     when {
-                        changeset 'frontend/**'
+                        allOf {
+                            expression {
+                                env.CI_MODE == 'FULL'
+                            }
+
+                            changeset 'frontend/**'
+                        }
                     }
 
                     steps {
                         container('flutter') {
                             dir('frontend') {
-                                sh '''
-                                    flutter build apk --debug
-                                '''
+                                sh 'flutter build apk --debug'
                             }
                         }
                     }
@@ -694,49 +659,67 @@ pipeline {
                     steps {
                         dir('backend') {
                             sh '''
+                                set -e
+
                                 mkdir -p reports
-
-                                echo "========================================"
-                                echo "Trivy Cache"
-                                echo "========================================"
-
-                                echo "Cache directory: $TRIVY_CACHE_DIR"
-
                                 mkdir -p "$TRIVY_CACHE_DIR"
 
-                                du -sh "$TRIVY_CACHE_DIR" || true
+                                echo "========================================"
+                                echo "Trivy Image Scan"
+                                echo "========================================"
 
-                                echo
-                                echo "========================================"
-                                echo "Trivy Vulnerability Report"
-                                echo "========================================"
+                                echo "Image : $IMAGE_NAME"
+                                echo "Cache : $TRIVY_CACHE_DIR"
+
+                                # ========================================
+                                # 1. Scan image ONCE
+                                # ========================================
 
                                 trivy image \
                                     --cache-dir "$TRIVY_CACHE_DIR" \
                                     --image-src remote \
                                     --insecure \
-                                    --severity HIGH,CRITICAL \
+                                    --format json \
+                                    --output reports/trivy-image.json \
+                                    "$IMAGE_NAME"
+
+                                # ========================================
+                                # 2. Human-readable table
+                                # ========================================
+
+                                echo
+                                echo "========================================"
+                                echo "HIGH / CRITICAL Vulnerabilities"
+                                echo "========================================"
+
+                                trivy convert \
                                     --format table \
-                                    "$IMAGE_NAME"
-
-                                echo
-                                echo "========================================"
-                                echo "Generate SARIF"
-                                echo "========================================"
-
-                                trivy image \
-                                    --cache-dir "$TRIVY_CACHE_DIR" \
-                                    --image-src remote \
-                                    --insecure \
-                                    --exit-code 1 \
                                     --severity HIGH,CRITICAL \
+                                    reports/trivy-image.json
+
+                                # ========================================
+                                # 3. SARIF artifact
+                                # ========================================
+
+                                trivy convert \
                                     --format sarif \
+                                    --severity HIGH,CRITICAL \
                                     --output reports/trivy-image.sarif \
-                                    "$IMAGE_NAME"
+                                    reports/trivy-image.json
+
+                                # ========================================
+                                # 4. Security gate
+                                # ========================================
+
+                                trivy convert \
+                                    --severity HIGH,CRITICAL \
+                                    --exit-code 1 \
+                                    --output /dev/null \
+                                    reports/trivy-image.json
 
                                 echo
                                 echo "========================================"
-                                echo "Persistent Trivy Cache"
+                                echo "Trivy Scan Passed"
                                 echo "========================================"
 
                                 du -sh "$TRIVY_CACHE_DIR" || true
@@ -747,7 +730,10 @@ pipeline {
                     post {
                         always {
                             archiveArtifacts(
-                                artifacts: 'backend/reports/trivy-image.sarif',
+                                artifacts: '''
+                                    backend/reports/trivy-image.json,
+                                    backend/reports/trivy-image.sarif
+                                ''',
                                 allowEmptyArchive: true
                             )
                         }
@@ -771,10 +757,7 @@ pipeline {
                                 "API_IMAGE=${env.IMAGE_NAME}"
                             ]) {
                                 sh '''
-                                    docker compose down --remove-orphans || true
-
                                     docker compose up -d
-
                                     docker compose ps
                                 '''
                             }
@@ -783,8 +766,6 @@ pipeline {
                         container('playwright') {
                             dir('backend') {
                                 sh '''
-                                    npm ci
-
                                     BASE_URL=http://localhost:3000 \
                                         npx playwright test
                                 '''
@@ -1008,6 +989,11 @@ pipeline {
                         echo "Commit:"
                         git log -1 --oneline
                     '''
+                    script {
+                        env.GITOPS_VALUES = env.BRANCH_NAME == 'main'
+                            ? "${env.TASKFLOW_CHART}/values-production.yaml"
+                            : "${env.TASKFLOW_CHART}/values-staging.yaml"
+                    }
                 }
             }
         }
@@ -1027,14 +1013,10 @@ pipeline {
             steps {
                 dir("${GITOPS_DIR}") {
                     sh '''
-                        echo "Lint staging..."
-                        helm lint "$TASKFLOW_CHART" \
-                            -f "$TASKFLOW_CHART/values-staging.yaml"
+                        echo "Linting $GITOPS_VALUES"
 
-                        echo
-                        echo "Lint production..."
                         helm lint "$TASKFLOW_CHART" \
-                            -f "$TASKFLOW_CHART/values-production.yaml"
+                            -f "$GITOPS_VALUES"
                     '''
                 }
             }
@@ -1054,24 +1036,14 @@ pipeline {
 
             steps {
                 dir("${GITOPS_DIR}") {
-                    script {
-                        if (env.BRANCH_NAME == 'develop') {
-                            env.GITOPS_VALUES = "${env.TASKFLOW_CHART}/values-staging.yaml"
-                        }
-
-                        if (env.BRANCH_NAME == 'main') {
-                            env.GITOPS_VALUES = "${env.TASKFLOW_CHART}/values-production.yaml"
-                        }
-                    }
-
                     sh '''
                         echo "Updating:"
                         echo "$GITOPS_VALUES"
 
                         yq -i \
-                        '.image.repository = "registry:5000/taskflow-api" |
-                        .image.tag = strenv(IMAGE_TAG)' \
-                        "$GITOPS_VALUES"
+                            '.image.repository = "registry:5000/taskflow-api" |
+                            .image.tag = strenv(IMAGE_TAG)' \
+                            "$GITOPS_VALUES"
 
                         echo "Updated image:"
                         yq '.image' "$GITOPS_VALUES"
@@ -1237,7 +1209,8 @@ pipeline {
                 )
             ]) {
                 sh '''
-                    python3 ci/scripts/discord_notify.py success
+                    python3 ci/scripts/discord_notify.py success \
+                        || echo "WARNING: Discord notification failed"
                 '''
             }
         }
@@ -1250,7 +1223,8 @@ pipeline {
                 )
             ]) {
                 sh '''
-                    python3 ci/scripts/discord_notify.py failure
+                    python3 ci/scripts/discord_notify.py failure \
+                        || echo "WARNING: Discord notification failed"
                 '''
             }
         }

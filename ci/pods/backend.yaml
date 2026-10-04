@@ -7,16 +7,16 @@ spec:
 
   containers:
     - name: ci
-      image: jenkins-ci-agent:latest
+      image: jenkins-ci-agent:1.0.0
       imagePullPolicy: IfNotPresent
 
       resources:
         requests:
-          cpu: "250m"
-          memory: "512Mi"
+          cpu: "500m"
+          memory: "768Mi"
         limits:
-          cpu: "1"
-          memory: "1536Mi"
+          cpu: "2"
+          memory: "2Gi"
 
       command:
         - cat
@@ -38,7 +38,7 @@ spec:
           mountPath: /cache/trivy
 
     - name: flutter
-      image: jenkins-flutter-ci:latest
+      image: jenkins-flutter-ci:1.0.0
       imagePullPolicy: IfNotPresent
 
       resources:
@@ -66,7 +66,7 @@ spec:
           mountPath: /cache
 
     - name: dind
-      image: docker:28-dind
+      image: docker:28.5.2-dind@sha256:2a232a42256f70d78e3cc5d2b5d6b3276710a0de0596c145f627ecfae90282ac
       imagePullPolicy: IfNotPresent
 
       resources:
@@ -94,14 +94,13 @@ spec:
           command:
             - docker
             - info
-
         initialDelaySeconds: 3
         periodSeconds: 2
         timeoutSeconds: 2
         failureThreshold: 30
 
     - name: playwright
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
       imagePullPolicy: IfNotPresent
 
       command:
@@ -125,3 +124,7 @@ spec:
     - name: trivy-cache
       persistentVolumeClaim:
         claimName: trivy-cache
+
+    - name: npm-cache
+      persistentVolumeClaim:
+        claimName: npm-cache

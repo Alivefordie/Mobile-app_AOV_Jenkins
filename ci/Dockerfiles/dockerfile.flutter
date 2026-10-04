@@ -1,0 +1,15 @@
+ARG FLUTTER_BASE_IMAGE
+ARG FLUTTER_BASE_DIGEST
+
+FROM ${FLUTTER_BASE_IMAGE}@${FLUTTER_BASE_DIGEST}
+
+USER root
+
+RUN yes | sdkmanager --licenses >/dev/null \
+    && sdkmanager \
+    "platforms;android-34" \
+    "platforms;android-35" \
+    "ndk;28.2.13676358" \
+    "cmake;3.22.1"
+
+RUN flutter doctor -v
