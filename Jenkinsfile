@@ -179,12 +179,12 @@ pipeline {
                             sh '''
                                 mkdir -p reports
 
-                                npx eslint \
-                                    --plugin security \
-                                    src/ \
-                                    --rule 'prettier/prettier: off' \
-                                    -f @microsoft/eslint-formatter-sarif \
-                                    -o reports/eslint.sarif
+                        npx --no-install eslint \
+                            --plugin security \
+                            src/ \
+                            --rule 'prettier/prettier: off' \
+                            -f @microsoft/eslint-formatter-sarif \
+                            -o reports/eslint.sarif
                             '''
                         }
                     }
@@ -767,7 +767,7 @@ pipeline {
                             dir('backend') {
                                 sh '''
                                     BASE_URL=http://localhost:3000 \
-                                        npx playwright test
+                                        npx --no-install playwright test
                                 '''
                             }
                         }
